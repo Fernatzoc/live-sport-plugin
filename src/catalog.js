@@ -135,7 +135,7 @@ function mapMatchToMetaPreview(match) {
 
 // ─── Handlers ─────────────────────────────────────────────────────────────────
 
-async function handleCatalog(type, id, extra) {
+async function handleCatalog(type, id, extra, config) {
   if (type !== 'tv' || !id.startsWith('nuvio_sports_')) {
     return { metas: [] };
   }
@@ -148,10 +148,16 @@ async function handleCatalog(type, id, extra) {
   
   let filteredMatches = matches;
   
-  if (extra && extra.config && extra.config.sports && extra.config.sports !== 'all') {
-    const allowedSports = extra.config.sports.toLowerCase().split(',').map(s => s.trim()).filter(Boolean);
+  if (config && config.sports && config.sports !== 'all') {
+    const allowedSports = config.sports.toLowerCase().split(',').map(s => s.trim()).filter(Boolean);
     // Don't filter out networks (24/7 TV) since they aren't tied to a specific sport
-    filteredMatches = filteredMatches.filter(m => m.category === 'networks' || allowedSports.includes(m.category) || allowedSports.includes('other'));
+    filteredMatches = filteredMatches.filter(m => 
+      m.category === 'networks' || 
+      allowedSports.includes(m.category) || 
+      allowedSports.includes('other') ||
+      (allowedSports.includes('mlbelmundo') && (m.id.startsWith('mlbelmundo_') || m.category === 'baseball')) ||
+      (allowedSports.includes('rojadirecta') && m.id.startsWith('rojadirecta_'))
+    );
   }
   
   if (categoryMatch === 'live') {
@@ -163,8 +169,8 @@ async function handleCatalog(type, id, extra) {
       return m.popular === '0' && kickoff > now;
     });
   } else if (categoryMatch === 'teams') {
-    if (extra && extra.config && extra.config.teams) {
-      const favoriteTeams = extra.config.teams.toLowerCase().split(',').map(t => t.trim()).filter(Boolean);
+    if (config && config.teams) {
+      const favoriteTeams = config.teams.toLowerCase().split(',').map(t => t.trim()).filter(Boolean);
       filteredMatches = matches.filter(m => {
         const titleWords = m.title.toLowerCase();
         return favoriteTeams.some(team => titleWords.includes(team));
@@ -185,6 +191,10 @@ async function handleCatalog(type, id, extra) {
         filteredMatches = filteredMatches.filter(m => m.category === genre);
       }
     }
+  } else if (categoryMatch === 'rojadirecta') {
+    filteredMatches = matches.filter(m => m.id.startsWith('rojadirecta_') || m.sources.some(s => s.source === 'rojadirecta'));
+  } else if (categoryMatch === 'mlbelmundo') {
+    filteredMatches = matches.filter(m => m.id.startsWith('mlbelmundo_') || m.sources.some(s => s.source === 'mlbelmundo'));
   } else if (categoryMatch !== 'catalog') {
     filteredMatches = matches.filter(m => m.category === categoryMatch);
   }

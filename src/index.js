@@ -183,6 +183,8 @@ app.get('/:config?/manifest.json', (req, res, next) => {
     if (enabledSports.includes('football')) keepCatalogs.push('nuvio_sports_football');
     if (enabledSports.includes('cricket')) keepCatalogs.push('nuvio_sports_cricket');
     if (enabledSports.includes('motorsport')) keepCatalogs.push('nuvio_sports_motorsport');
+    if (enabledSports.includes('rojadirecta')) keepCatalogs.push('nuvio_sports_rojadirecta');
+    if (enabledSports.includes('mlbelmundo')) keepCatalogs.push('nuvio_sports_mlbelmundo');
     
     // "Other Sports" contains these genres
     const otherSports = ['basketball', 'american_football', 'rugby', 'other'];
@@ -312,6 +314,7 @@ app.get('/watch', (req, res) => {
   </style>
   <script src="https://cdn.jsdelivr.net/npm/p2p-media-loader-core@latest/build/p2p-media-loader-core.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/p2p-media-loader-hlsjs@latest/build/p2p-media-loader-hlsjs.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/cdnbye@latest/dist/hlsjs-p2p-engine.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/hls.js@latest"></script>
 </head>
 <body>
@@ -330,6 +333,8 @@ app.get('/watch', (req, res) => {
 
   <iframe
     id="player"
+    referrerpolicy="no-referrer"
+    sandbox="allow-scripts allow-same-origin allow-presentation"
     allowfullscreen
     allow="autoplay; encrypted-media; fullscreen; picture-in-picture; accelerometer; gyroscope"
     scrolling="no"
@@ -349,19 +354,64 @@ app.get('/watch', (req, res) => {
     // Auto-proxy m3u8 urls through our local server to completely bypass CORS in the browser!
     let finalUrl = targetUrl;
     if (isM3u8 && !targetUrl.includes('/api/hls')) {
-      finalUrl = '/api/hls?url=' + encodeURIComponent(targetUrl) + '&referer=' + encodeURIComponent('https://embed.st/') + '&embedOrigin=' + encodeURIComponent('https://embed.st');
+      const urlParams = new URLSearchParams(window.location.search);
+      const customReferer = urlParams.get('referer') || 'https://embed.st/';
+      const customOrigin = urlParams.get('embedOrigin') || 'https://embed.st';
+      finalUrl = '/api/hls?url=' + encodeURIComponent(targetUrl) + '&referer=' + encodeURIComponent(customReferer) + '&embedOrigin=' + encodeURIComponent(customOrigin);
     }
+
+    const urlParams = new URLSearchParams(window.location.search);
+    const noP2p = urlParams.get('nop2p') === 'true';
+    const p2pEngineType = urlParams.get('p2pEngine') || 'p2pml';
 
     if (isM3u8) {
       iframe.style.display = 'none';
       video.style.display = 'block';
       p2pStatus.style.display = 'block';
 
-      if (p2pml.hlsjs.Engine.isSupported()) {
+      if (!noP2p && p2pEngineType === 'cdnbye' && typeof P2PEngineHls !== 'undefined') {
+        const p2pConfig = {
+          live: true,
+          token: urlParams.get('p2pToken') || 'omHmDDWNR',
+          segmentId: function(url, streamId) {
+            let urlStr = '';
+            if (typeof url === 'string') {
+              urlStr = url;
+            } else if (url && typeof url.url === 'string') {
+              urlStr = url.url;
+            } else {
+              urlStr = String(url || '');
+            }
+            const match = urlStr.match(/([a-zA-Z0-9_-]+\.ts)/);
+            return match ? match[1] : urlStr;
+          }
+        };
+
+        const hls = new Hls({
+          liveSyncDurationCount: 7
+        });
+
+        const engine = new P2PEngineHls(hls, p2pConfig);
+
+        engine.on('peers', (peers) => {
+           p2pStatus.innerText = 'P2P Active (CDNBye): ' + peers.length + ' peers connected';
+        });
+
+        hls.loadSource(finalUrl);
+        hls.attachMedia(video);
+        hls.on(Hls.Events.MANIFEST_PARSED, () => {
+          video.play().catch(e => {
+            console.log('Autoplay blocked unmuted, trying muted...');
+            video.muted = true;
+            video.play().catch(err => console.log('Autoplay completely blocked'));
+          });
+          loader.classList.add('hidden');
+        });
+      } else if (!noP2p && p2pEngineType === 'p2pml' && p2pml.hlsjs.Engine.isSupported()) {
         const engine = new p2pml.hlsjs.Engine();
         
         engine.on('peer_connect', () => {
-           p2pStatus.innerText = 'P2P Active: ' + engine.getSettings().swarmId + ' peers connected';
+           p2pStatus.innerText = 'P2P Active (P2PML): ' + engine.getSettings().swarmId + ' peers connected';
         });
 
         const hls = new Hls({
@@ -373,15 +423,25 @@ app.get('/watch', (req, res) => {
         hls.loadSource(finalUrl);
         hls.attachMedia(video);
         hls.on(Hls.Events.MANIFEST_PARSED, () => {
-          video.play().catch(e => console.log('Autoplay blocked'));
+          video.play().catch(e => {
+            console.log('Autoplay blocked unmuted, trying muted...');
+            video.muted = true;
+            video.play().catch(err => console.log('Autoplay completely blocked'));
+          });
           loader.classList.add('hidden');
         });
       } else if (Hls.isSupported()) {
-        const hls = new Hls();
+        const hls = new Hls({
+          liveSyncDurationCount: 7
+        });
         hls.loadSource(finalUrl);
         hls.attachMedia(video);
         hls.on(Hls.Events.MANIFEST_PARSED, () => {
-          video.play();
+          video.play().catch(e => {
+            console.log('Autoplay blocked unmuted, trying muted...');
+            video.muted = true;
+            video.play().catch(err => console.log('Autoplay completely blocked'));
+          });
           loader.classList.add('hidden');
         });
       } else if (video.canPlayType('application/vnd.apple.mpegurl')) {

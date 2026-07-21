@@ -1,7 +1,8 @@
 class MatchAggregator {
-  constructor({ streamFreeProvider, timStreamsProvider, binTvProvider, ntvProvider, iptvOrgProvider, sportyHunterProvider, streamSportsProvider, watchFootyProvider, cdnLiveProvider, streamSports99Provider, ppvDomainsProvider, streamicProvider, cacheService, yamlProviders }) {
-    this.providers = [streamFreeProvider, timStreamsProvider, binTvProvider, ntvProvider, iptvOrgProvider, sportyHunterProvider, streamSportsProvider, watchFootyProvider, cdnLiveProvider, streamSports99Provider, ppvDomainsProvider, streamicProvider, ...(yamlProviders || [])];
-    this.cacheService = cacheService;
+  constructor(opts) {
+    const jsProviders = (opts.jsProvidersList || []).map(key => opts[key]);
+    this.providers = [...jsProviders, ...(opts.yamlProviders || [])];
+    this.cacheService = opts.cacheService;
   }
 
   isSameEvent(e1, e2) {

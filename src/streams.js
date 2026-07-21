@@ -38,25 +38,24 @@ async function handleStream(type, id, config) {
   const m3u8Parser = container.resolve('m3u8Parser');
   const streamScorer = container.resolve('streamScorer');
 
+  const registeredJSProviders = (container.resolve('jsProvidersList') || []).map(k => k.replace('Provider', '').toLowerCase());
+  const KNOWN_FALLBACKS = [...registeredJSProviders, 'iptv-org', 'iptv-org'.replace('-', '')];
+
   let activeSources = sortedSources;
   if (config && config.sources && config.sources !== 'none') {
     const enabled = config.sources.split(',');
-    const KNOWN_FALLBACKS = ['watchfooty', 'cdnlive', 'streamsports99', 'streamic', 'ppvdomains', 'streamfree', 'timstreams', 'bintv', 'ntv', 'sportyhunter', 'streamsports', 'iptv-org'];
     activeSources = sortedSources.filter(src => {
       if (src.source.startsWith('yaml_')) return true;
-      const isFallback = KNOWN_FALLBACKS.includes(src.source);
+      const isFallback = KNOWN_FALLBACKS.includes(src.source.replace(/[^a-zA-Z0-9]/g, ''));
       if (isFallback) {
         return enabled.includes(src.source);
       }
-      return false; // Streamed.pk internal sources are removed
+      return false;
     });
   } else {
-    // If no config is passed (default install), we still need to filter out Streamed.pk
-    // since the source is completely removed.
-    const KNOWN_FALLBACKS = ['watchfooty', 'cdnlive', 'streamsports99', 'streamic', 'ppvdomains', 'streamfree', 'timstreams', 'bintv', 'ntv', 'sportyhunter', 'streamsports', 'iptv-org'];
     activeSources = sortedSources.filter(src => {
       if (src.source.startsWith('yaml_')) return true;
-      return KNOWN_FALLBACKS.includes(src.source);
+      return KNOWN_FALLBACKS.includes(src.source.replace(/[^a-zA-Z0-9]/g, ''));
     });
   }
 
@@ -65,45 +64,18 @@ async function handleStream(type, id, config) {
     let resStreams = [];
 
     try {
-      if (sourceName === 'streamfree') {
-        const provider = container.resolve('streamFreeProvider');
-        const sfCategory = src.original_category || match.category;
-        resStreams = await provider.resolveStream(src.id, sfCategory, match.title);
+      const registeredKeys = container.resolve('jsProvidersList') || [];
+      const matchKey = registeredKeys.find(k => k.toLowerCase() === `${sourceName.replace(/[^a-zA-Z0-9]/g, '')}provider`);
+
+      if (matchKey) {
+        const provider = container.resolve(matchKey);
+        const category = src.original_category || match.category;
+        resStreams = await provider.resolveStream(src.id, category, match.title, src);
         for (const s of resStreams) {
-          if (s.url && s.url.startsWith('/api/hls')) {
+          if (s.url && s.url.startsWith('/api/hls') && !s.url.startsWith('http')) {
             s.url = `${BASE_URL}${s.url}`;
           }
         }
-      } else if (sourceName === 'timstreams') {
-        const provider = container.resolve('timStreamsProvider');
-        resStreams = await provider.resolveStream(src.id, match.category, match.title);
-      } else if (sourceName === 'bintv') {
-        const provider = container.resolve('binTvProvider');
-        resStreams = await provider.resolveStream(src.id, match.category, match.title);
-      } else if (sourceName === 'ntv') {
-        const provider = container.resolve('ntvProvider');
-        resStreams = await provider.resolveStream(src.id, match.category, match.title);
-      } else if (sourceName === 'sportyhunter') {
-        const provider = container.resolve('sportyHunterProvider');
-        resStreams = await provider.resolveStream(src.id, match.category, match.title);
-      } else if (sourceName === 'streamsports') {
-        const provider = container.resolve('streamSportsProvider');
-        resStreams = await provider.resolveStream(src.id, match.category, match.title);
-      } else if (sourceName === 'watchfooty') {
-        const provider = container.resolve('watchFootyProvider');
-        resStreams = await provider.resolveStream(src.id, match.category, match.title);
-      } else if (sourceName === 'cdnlive') {
-        const provider = container.resolve('cdnLiveProvider');
-        resStreams = await provider.resolveStream(src.id, match.category, match.title);
-      } else if (sourceName === 'streamsports99') {
-        const provider = container.resolve('streamSports99Provider');
-        resStreams = await provider.resolveStream(src.id, match.category, match.title);
-      } else if (sourceName === 'streamic') {
-        const provider = container.resolve('streamicProvider');
-        resStreams = await provider.resolveStream(src.id, match.category, match.title, src);
-      } else if (sourceName === 'ppvdomains') {
-        const provider = container.resolve('ppvDomainsProvider');
-        resStreams = await provider.resolveStream(src.id, match.category, match.title, src);
       } else if (sourceName === 'iptv-org') {
         resStreams = [{
           name: 'Nuvio Direct',
@@ -112,7 +84,6 @@ async function handleStream(type, id, config) {
           resolution: src.quality
         }];
       } else {
-        // Unknown or unsupported source, ignore
         resStreams = [];
       }
 
