@@ -302,9 +302,16 @@ class RojadirectaProvider extends BaseProvider {
   /**
    * Recursively crawls page and nested iframes to find player HLS stream details.
    */
-  async findIframeStream(url, referer, depth = 0, state = { deepestUrl: null }) {
+  async findIframeStream(url, referer, depth = 0, state = { deepestUrl: null, playerUrl: null }) {
     if (depth > 3) return null;
     try {
+      const isAd = /ads|adsystem|popads|adsterra|exoclick|googleads|doubleclick|histats|analytics|click|banner|popup/i.test(url);
+      const isLikelyPlayer = /embed|player|stream|play|video|live|canal|channel|m3u8|hls|widget|show|view/i.test(url);
+
+      if (isLikelyPlayer && !isAd && !state.playerUrl) {
+        state.playerUrl = url;
+      }
+
       state.deepestUrl = url;
       const html = await this.fetchHtml.fire(url, { 'Referer': referer });
       if (!html) return null;
@@ -422,7 +429,12 @@ class RojadirectaProvider extends BaseProvider {
       const iframes = [];
       $('iframe').each((_, el) => {
         const src = $(el).attr('src');
-        if (src) iframes.push(src);
+        if (src) {
+          const isAdSrc = /ads|adsystem|popads|adsterra|exoclick|googleads|doubleclick|histats|analytics|click|banner|popup/i.test(src);
+          if (!isAdSrc) {
+            iframes.push(src);
+          }
+        }
       });
 
       for (let iframeSrc of iframes) {
@@ -486,11 +498,13 @@ class RojadirectaProvider extends BaseProvider {
       const isDirect = s.href.includes('.m3u8');
 
       if (isDirect) {
-        return new StreamEntity({
-          name: 'Nuvio Direct',
-          title: title,
-          url: s.href
-        });
+        return [
+          new StreamEntity({
+            name: 'Nuvio Direct',
+            title: title,
+            url: s.href
+          })
+        ];
       }
 
       // 1. Extract target URL from Rojadirecta redirect if possible, otherwise follow redirects
@@ -499,36 +513,47 @@ class RojadirectaProvider extends BaseProvider {
         cleanUrl = await this.followRedirects(s.href, 'http://www.rojadirecta.eu/');
       }
 
-      const state = { deepestUrl: cleanUrl };
+      const state = { deepestUrl: cleanUrl, playerUrl: null };
 
       try {
         const resolved = await this.findIframeStream(cleanUrl, 'http://www.rojadirecta.eu/', 0, state);
         if (resolved && resolved.url) {
           const localProxyUrl = `/api/hls?url=${encodeURIComponent(resolved.url)}&referer=${encodeURIComponent(resolved.referer)}&embed=rojadirecta/${encodeURIComponent(sourceId)}/1&embedOrigin=${encodeURIComponent(resolved.origin)}`;
 
-          return new StreamEntity({
-            name: 'Nuvio Direct',
-            title: title + ' ⚡',
-            url: localProxyUrl
-          });
+          const fallbackUrl = state.playerUrl || state.deepestUrl || cleanUrl || s.href;
+
+          return [
+            new StreamEntity({
+              name: 'Nuvio Direct',
+              title: title + ' ⚡',
+              url: localProxyUrl
+            }),
+            new StreamEntity({
+              name: 'Nuvio Web Player',
+              title: title + ' 🖥️',
+              externalUrl: `${BASE_URL}/watch?url=${encodeURIComponent(fallbackUrl)}&title=${encodeURIComponent(matchTitle || 'Live Event')}`
+            })
+          ];
         }
       } catch (err) {
         console.warn(`[${this.name}] Dynamic resolver failed for ${s.href}:`, err.message);
       }
 
       // If we couldn't resolve the stream to an m3u8, but we found a cleaner embed/player URL,
-      // use the deepestUrl reached rather than the raw redirect link.
-      const fallbackUrl = state.deepestUrl || cleanUrl || s.href;
+      // use the playerUrl or deepestUrl reached rather than the raw redirect link.
+      const fallbackUrl = state.playerUrl || state.deepestUrl || cleanUrl || s.href;
 
-      return new StreamEntity({
-        name: 'Nuvio Web Player',
-        title: title,
-        externalUrl: `${BASE_URL}/watch?url=${encodeURIComponent(fallbackUrl)}&title=${encodeURIComponent(matchTitle || 'Live Event')}`
-      });
+      return [
+        new StreamEntity({
+          name: 'Nuvio Web Player',
+          title: title,
+          externalUrl: `${BASE_URL}/watch?url=${encodeURIComponent(fallbackUrl)}&title=${encodeURIComponent(matchTitle || 'Live Event')}`
+        })
+      ];
     });
 
     const results = await Promise.all(resolveTasks);
-    return results.filter(Boolean);
+    return results.flat().filter(Boolean);
   }
 }
 
