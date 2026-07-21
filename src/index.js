@@ -453,6 +453,15 @@ app.get('/watch', (req, res) => {
       }
     } else {
       video.style.display = 'none';
+
+      // Bypass anti-sandbox protections on known streaming domains
+      const urlParams = new URLSearchParams(window.location.search);
+      const disableSandbox = urlParams.get('sandbox') === 'false' || 
+                             /stream196tp|streamtp|tutele\.live|sudamericaplay|coolity\.xyz/i.test(targetUrl);
+      if (disableSandbox) {
+        iframe.removeAttribute('sandbox');
+      }
+
       iframe.src = targetUrl;
       iframe.addEventListener('load', () => loader.classList.add('hidden'));
       setTimeout(() => loader.classList.add('hidden'), 6000);
