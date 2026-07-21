@@ -1,10 +1,7 @@
 import { relayLink } from '../relay/link.js'
-import { resolve as resolveGolf, relayReferer } from '../sources/golf/resolve.js'
-import { postFetch } from '../sources/goat/fetch.js'
-import { unlock } from '../sources/goat/lock.js'
-import { encodeBody } from '../sources/goat/proto.js'
 import { loadWatch } from '../streamed/watch.js'
 import { parseInput } from './parse.js'
+import { resolveSource } from '../sources/registry.js'
 
 export async function run(input, origin) {
   let slot
@@ -27,14 +24,7 @@ export async function run(input, origin) {
   }
 
   try {
-    let m3u8
-    if (slot.source === 'golf') {
-      m3u8 = await resolveGolf(slot)
-      slot.referer = relayReferer
-    } else {
-      const { body, goat } = await postFetch(encodeBody(slot), slot)
-      m3u8 = await unlock(slot, goat, body)
-    }
+    const m3u8 = await resolveSource(slot)
     return {
       ok: true,
       slug: slot.slug,

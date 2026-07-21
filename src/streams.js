@@ -184,16 +184,15 @@ async function handleStream(type, id, config) {
         channelName = originalTitle;
       }
     }
+    // Determine Group
+    s.name = isWeb ? '🌐 Web Stream' : '⚡ Direct Stream';
     
-    s.name = `${icon} Nuvio\n${providerName}`;
-    
-    let typeIndicator = isWeb ? '🌐 Web Stream' : '▶️ Direct Stream';
     if (channelName) {
       channelName = channelName.split(/[ _-]/).map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ').trim();
-      typeIndicator = isWeb ? `🌐 ${channelName}` : `▶️ ${channelName}`;
     }
     
-    s.title = `${typeIndicator}\n⚙️ Quality: ${quality}`;
+    const channelDisplay = channelName ? ` | 📺 ${channelName}` : '';
+    s.title = `${icon} ${providerName}${channelDisplay}\n⚙️ Quality: ${quality}`;
     
     // Add behaviorHints to group streams and handle CORS for direct streams
     s.behaviorHints = s.behaviorHints || {};
@@ -218,8 +217,13 @@ async function handleStream(type, id, config) {
     }
   });
 
-  // Sort streams by score descending
-  streams.sort((a, b) => b.score - a.score);
+  // Sort streams: Direct streams first, then by score descending
+  streams.sort((a, b) => {
+    const aIsDirect = a.name === '⚡ Direct Stream' ? 1 : 0;
+    const bIsDirect = b.name === '⚡ Direct Stream' ? 1 : 0;
+    if (aIsDirect !== bIsDirect) return bIsDirect - aIsDirect;
+    return b.score - a.score;
+  });
 
   // Return streams with cacheMaxAge: 0 to force Nuvio to fetch a fresh token every time!
   return { 

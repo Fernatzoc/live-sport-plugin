@@ -1,6 +1,8 @@
-import { pull } from '../wire/curl.js'
+import { pullStream } from '../wire/curl.js'
 import { parseRelaySlot, relayLink } from './link.js'
-import { segmentBody } from './segment.js'
+import { createSegmentStream } from './segment.js'
+import { getPrefetched, prefetchSegment, setNextSegment, getNextSegment } from './prefetch.js'
+import { Readable } from 'stream'
 
 const cors = { 'Access-Control-Allow-Origin': '*' }
 
@@ -20,6 +22,7 @@ function isPlaylist(body) {
 }
 
 function rewrite(text, base, slot, origin) {
+  let prevUri = null
   return text
     .split('\n')
     .map((line) => {
@@ -29,18 +32,60 @@ function rewrite(text, base, slot, origin) {
         if (!t.includes('URI="')) return line
         return t.replace(/URI="([^"]+)"/g, (_, uri) => {
           const href = absUri(uri, base)
+          if (prevUri) setNextSegment(prevUri, href)
+          prevUri = href
           return `URI="${relayLink(origin, href, slot)}"`
         })
       }
-      return relayLink(origin, absUri(t, base), slot)
+      
+      const href = absUri(t, base)
+      if (prevUri) setNextSegment(prevUri, href)
+      prevUri = href
+      
+      return relayLink(origin, href, slot)
     })
     .join('\n')
 }
 
 async function relay(res, url, slot, origin) {
-  const raw = await pull(url, slot)
+  const fetchRes = await (getPrefetched(url) || pullStream(url, slot))
+  const bodyStream = Readable.fromWeb(fetchRes.body)
 
-  if (isPlaylist(raw)) {
+  const firstChunk = await new Promise((resolve, reject) => {
+    const onReadable = () => {
+      cleanup()
+      resolve(bodyStream.read())
+    }
+    const onEnd = () => {
+      cleanup()
+      resolve(null)
+    }
+    const onError = (err) => {
+      cleanup()
+      reject(err)
+    }
+    const cleanup = () => {
+      bodyStream.off('readable', onReadable)
+      bodyStream.off('end', onEnd)
+      bodyStream.off('error', onError)
+    }
+    bodyStream.once('readable', onReadable)
+    bodyStream.once('end', onEnd)
+    bodyStream.once('error', onError)
+  })
+
+  if (!firstChunk) {
+    res.writeHead(200, cors)
+    res.end()
+    return
+  }
+
+  if (isPlaylist(firstChunk)) {
+    const chunks = [firstChunk]
+    for await (const chunk of bodyStream) {
+      chunks.push(chunk)
+    }
+    const raw = Buffer.concat(chunks)
     res.writeHead(200, {
       ...cors,
       'Content-Type': 'application/vnd.apple.mpegurl',
@@ -51,7 +96,17 @@ async function relay(res, url, slot, origin) {
   }
 
   res.writeHead(200, { ...cors, 'Content-Type': 'video/mp2t', 'Cache-Control': 'no-cache' })
-  res.end(segmentBody(raw))
+  
+  const segmentStream = createSegmentStream()
+  segmentStream.pipe(res)
+  
+  segmentStream.write(firstChunk)
+  bodyStream.pipe(segmentStream)
+
+  const nextUrl = getNextSegment(url)
+  if (nextUrl) {
+    prefetchSegment(nextUrl, slot)
+  }
 }
 
 export async function serve(res, params, origin) {

@@ -252,6 +252,15 @@
     </div>
 
     <div class="section">
+      <h3>Localization</h3>
+      <div class="input-group">
+        <label>Select your local timezone (Match times will be displayed in this timezone)</label>
+        <select id="timezone" style="width: 100%; padding: 14px 16px; background: rgba(0, 0, 0, 0.2); border: 1px solid var(--card-border); border-radius: 12px; color: #fff; font-size: 15px; box-sizing: border-box; font-family: 'Inter', sans-serif; transition: all 0.2s; outline: none; cursor: pointer;">
+        </select>
+      </div>
+    </div>
+
+    <div class="section">
       <h3>Priority Tracking</h3>
       <div class="input-group">
         <label>Favorite Teams (Comma Separated)</label>
@@ -287,16 +296,85 @@
     const input = document.getElementById('teams');
     const checkboxes = document.querySelectorAll('#sportsGrid input[type="checkbox"]');
     const sourceCheckboxes = document.querySelectorAll('#sourcesGrid input[type="checkbox"]');
+    const timezoneSelect = document.getElementById('timezone');
+
+    // Populate timezones
+    try {
+      const popularTimezones = [
+        { value: 'Pacific/Midway', label: 'Midway Island (GMT-11:00)' },
+        { value: 'Pacific/Honolulu', label: 'Hawaii (GMT-10:00)' },
+        { value: 'America/Anchorage', label: 'Alaska (GMT-09:00)' },
+        { value: 'America/Los_Angeles', label: 'Pacific Time (GMT-08:00)' },
+        { value: 'America/Denver', label: 'Mountain Time (GMT-07:00)' },
+        { value: 'America/Chicago', label: 'Central Time (GMT-06:00)' },
+        { value: 'America/New_York', label: 'Eastern Time (GMT-05:00)' },
+        { value: 'America/Halifax', label: 'Atlantic Time (GMT-04:00)' },
+        { value: 'America/Sao_Paulo', label: 'Brazil (GMT-03:00)' },
+        { value: 'Atlantic/South_Georgia', label: 'Mid-Atlantic (GMT-02:00)' },
+        { value: 'Atlantic/Azores', label: 'Azores (GMT-01:00)' },
+        { value: 'Europe/London', label: 'UK & Ireland (GMT+00:00)' },
+        { value: 'Europe/Paris', label: 'Western Europe (GMT+01:00)' },
+        { value: 'Europe/Athens', label: 'Eastern Europe (GMT+02:00)' },
+        { value: 'Europe/Moscow', label: 'Russia - Moscow (GMT+03:00)' },
+        { value: 'Asia/Dubai', label: 'UAE (GMT+04:00)' },
+        { value: 'Asia/Karachi', label: 'Pakistan (GMT+05:00)' },
+        { value: 'Asia/Kolkata', label: 'India (GMT+05:30)' },
+        { value: 'Asia/Dhaka', label: 'Bangladesh (GMT+06:00)' },
+        { value: 'Asia/Bangkok', label: 'Thailand & Vietnam (GMT+07:00)' },
+        { value: 'Asia/Singapore', label: 'Singapore & Malaysia (GMT+08:00)' },
+        { value: 'Asia/Tokyo', label: 'Japan (GMT+09:00)' },
+        { value: 'Australia/Sydney', label: 'Eastern Australia (GMT+10:00)' },
+        { value: 'Pacific/Noumea', label: 'New Caledonia (GMT+11:00)' },
+        { value: 'Pacific/Auckland', label: 'New Zealand (GMT+12:00)' }
+      ];
+
+      const localTz = Intl.DateTimeFormat().resolvedOptions().timeZone;
+      let matchedLocal = false;
+
+      popularTimezones.forEach(tz => {
+        const option = document.createElement('option');
+        option.value = tz.value;
+        option.textContent = tz.label;
+        option.style.background = '#1c1c1e';
+        option.style.color = '#fff';
+        if (tz.value === localTz) {
+          option.selected = true;
+          matchedLocal = true;
+        }
+        timezoneSelect.appendChild(option);
+      });
+
+      // If local timezone isn't in our curated list, add it dynamically to the top
+      if (!matchedLocal && localTz) {
+        const option = document.createElement('option');
+        option.value = localTz;
+        const date = new Date();
+        const offset = -date.getTimezoneOffset();
+        const sign = offset >= 0 ? '+' : '-';
+        const hours = Math.floor(Math.abs(offset) / 60).toString().padStart(2, '0');
+        const mins = (Math.abs(offset) % 60).toString().padStart(2, '0');
+        const loc = localTz.split('/').pop().replace(/_/g, ' ');
+        option.textContent = `${loc} (GMT${sign}${hours}:${mins})`;
+        option.style.background = '#1c1c1e';
+        option.style.color = '#fff';
+        option.selected = true;
+        timezoneSelect.insertBefore(option, timezoneSelect.firstChild);
+      }
+    } catch(e) {
+      console.warn("Timezone API not fully supported.", e);
+    }
 
     function updateLink() {
       const teams = input.value.trim();
       const selectedSports = Array.from(checkboxes).filter(cb => cb.checked).map(cb => cb.value);
       const selectedSources = Array.from(sourceCheckboxes).filter(cb => cb.checked).map(cb => cb.value);
+      const tz = timezoneSelect.value;
 
       let manifestUrl = window.location.origin + '/manifest.json';
 
       const config = {};
       if (teams) config.teams = teams;
+      if (tz) config.timezone = tz;
 
       if (selectedSports.length < checkboxes.length) {
         config.sports = selectedSports.join(',');
@@ -318,6 +396,7 @@
     }
 
     input.addEventListener('input', updateLink);
+    timezoneSelect.addEventListener('change', updateLink);
     [...checkboxes, ...sourceCheckboxes].forEach(cb => {
       cb.addEventListener('change', (e) => {
         const label = e.target.closest('.checkbox-label');
