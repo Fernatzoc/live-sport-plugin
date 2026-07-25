@@ -79,37 +79,123 @@ class MlbElMundoProvider extends BaseProvider {
     return matches;
   }
 
+  async extractDirectM3u8(watchUrl) {
+    const headers = {
+      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/127.0.0.0 Safari/537.36'
+    };
+
+    try {
+      // 1. Fetch match page
+      const html = await axios.get(watchUrl, { headers, timeout: 8000 }).then(r => r.data).catch(() => null);
+      if (!html) return null;
+
+      const $ = cheerio.load(html);
+      const iframeSrc = $('.player-container iframe').attr('src') || $('iframe').attr('src');
+      if (!iframeSrc) return null;
+
+      const playerUrl = iframeSrc.startsWith('//') ? `https:${iframeSrc}` : iframeSrc;
+
+      // 2. Fetch player iframe page
+      const playerHtml = await axios.get(playerUrl, {
+        headers: { ...headers, Referer: watchUrl },
+        timeout: 8000
+      }).then(r => r.data).catch(() => null);
+
+      if (!playerHtml) return { playerUrl };
+
+      const $p = cheerio.load(playerHtml);
+      const nestedIframe = $p('iframe').attr('src');
+      const hlsEmbedUrl = nestedIframe
+        ? (nestedIframe.startsWith('//') ? `https:${nestedIframe}` : nestedIframe.startsWith('http') ? nestedIframe : new URL(nestedIframe, playerUrl).toString())
+        : playerUrl;
+
+      // 3. Fetch HLS embed page if nested iframe exists
+      let hlsHtml = playerHtml;
+      if (hlsEmbedUrl !== playerUrl) {
+        hlsHtml = await axios.get(hlsEmbedUrl, {
+          headers: { ...headers, Referer: playerUrl },
+          timeout: 8000
+        }).then(r => r.data).catch(() => playerHtml);
+      }
+
+      // 4. Try to find m3u8 in hlsHtml directly
+      let m3u8Match = hlsHtml.match(/(https?:\/\/[^"'\s]+\.m3u8[^"'\s]*)/i) ||
+                      hlsHtml.match(/source:\s*["']([^"'\s]+\.m3u8[^"'\s]*)["']/i) ||
+                      hlsHtml.match(/file:\s*["']([^"'\s]+\.m3u8[^"'\s]*)["']/i);
+
+      if (m3u8Match && m3u8Match[1]) {
+        return { playerUrl, hlsEmbedUrl, m3u8: m3u8Match[1] };
+      }
+
+      // 5. Try decrypt.php POST request if present
+      const decryptMatch = hlsHtml.match(/input:\s*["']([^"']+)["']/i);
+      if (decryptMatch && decryptMatch[1]) {
+        const inputVal = decryptMatch[1];
+        const decryptEndpoint = new URL('decrypt.php', hlsEmbedUrl).toString();
+
+        const decryptRes = await axios.post(decryptEndpoint,
+          new URLSearchParams({ input: inputVal }).toString(),
+          {
+            headers: {
+              'Content-Type': 'application/x-www-form-urlencoded',
+              'Referer': hlsEmbedUrl,
+              'User-Agent': headers['User-Agent']
+            },
+            timeout: 8000
+          }
+        ).then(r => r.data).catch(() => null);
+
+        if (decryptRes && typeof decryptRes === 'string' && decryptRes.includes('.m3u8')) {
+          return { playerUrl, hlsEmbedUrl, m3u8: decryptRes.trim() };
+        }
+      }
+
+      return { playerUrl, hlsEmbedUrl };
+    } catch (e) {
+      console.warn(`[${this.name}] extractDirectM3u8 error for ${watchUrl}:`, e.message);
+      return null;
+    }
+  }
+
   async resolveStream(sourceId, matchCategory, matchTitle) {
     const streams = [];
     const watchUrl = sourceId; // sourceId is the absolute game page URL (e.g. good.ltabasket.com)
 
     try {
-      // 1. Fetch the match page (e.g., good.ltabasket.com)
-      const html = await this.fetchData.fire(watchUrl);
-      if (html) {
-        const $ = cheerio.load(html);
-        const iframeSrc = $('.player-container iframe').attr('src');
-        
-        if (iframeSrc) {
-          const playerUrl = iframeSrc.startsWith('//') ? `https:${iframeSrc}` : iframeSrc;
-          
-          streams.push(new StreamEntity({
-            name: 'Nuvio Web Player',
-            title: `MLB Live Stream ⚾`,
-            externalUrl: `${BASE_URL}/watch?url=${encodeURIComponent(playerUrl)}&title=${encodeURIComponent(matchTitle || 'MLB Live Game')}`
-          }));
-          
-          return streams;
-        }
+      const extracted = await this.extractDirectM3u8(watchUrl);
+
+      if (extracted && extracted.m3u8) {
+        const localProxyUrl = `/api/hls?url=${encodeURIComponent(extracted.m3u8)}&referer=${encodeURIComponent('https://streame.center/')}&embedOrigin=${encodeURIComponent('https://streame.center')}`;
+
+        streams.push(new StreamEntity({
+          name: 'Nuvio Direct',
+          title: `MLB Live Stream ⚡`,
+          url: localProxyUrl
+        }));
+
+        streams.push(new StreamEntity({
+          name: 'Nuvio Web Player',
+          title: `MLB Live Stream 🖥️`,
+          externalUrl: `${BASE_URL}/watch?url=${encodeURIComponent(extracted.playerUrl || watchUrl)}&title=${encodeURIComponent(matchTitle || 'MLB Live Game')}`
+        }));
+
+        return streams;
+      } else if (extracted && extracted.playerUrl) {
+        streams.push(new StreamEntity({
+          name: 'Nuvio Web Player',
+          title: `MLB Live Stream 🖥️`,
+          externalUrl: `${BASE_URL}/watch?url=${encodeURIComponent(extracted.playerUrl)}&title=${encodeURIComponent(matchTitle || 'MLB Live Game')}`
+        }));
+        return streams;
       }
     } catch (err) {
-      console.warn(`[${this.name}] resolveStream iframe extraction failed:`, err.message);
+      console.warn(`[${this.name}] resolveStream failed:`, err.message);
     }
 
     // Fallback: If extraction fails, point to the top-level match page inside /watch
     streams.push(new StreamEntity({
       name: 'Nuvio Web Player',
-      title: `MLB Live Stream ⚾`,
+      title: `MLB Live Stream 🖥️`,
       externalUrl: `${BASE_URL}/watch?url=${encodeURIComponent(watchUrl)}&title=${encodeURIComponent(matchTitle || 'MLB Live Game')}`
     }));
 

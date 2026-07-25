@@ -143,7 +143,8 @@ async function handleStream(type, id, config) {
     streamfree: 'StreamFree', timstreams: 'TimStreams', bintv: 'BinTV',
     ntv: 'NTV', sportyhunter: 'SportyHunter', streamsports: 'StreamSports',
     'iptv-org': 'Direct IPTV', 'streamsports99': 'StreamSports99',
-    'ppvdomains': 'PPV Domains', 'streamic': 'Streamic', 'strims24': 'Strims24'
+    'ppvdomains': 'PPV Domains', 'streamic': 'Streamic', 'strims24': 'Strims24',
+    mlbelmundo: 'MLB El Mundo'
   };
 
   streams.forEach(s => {
@@ -170,6 +171,7 @@ async function handleStream(type, id, config) {
     else if (s.title && s.title.toLowerCase().includes('ppv domains')) providerName = 'PPV Domains';
     else if (s.title && s.title.toLowerCase().includes('streamic')) providerName = 'Streamic';
     else if (s.title && s.title.toLowerCase().includes('strims24')) providerName = 'Strims24';
+    else if (s.title && s.title.toLowerCase().includes('mlbelmundo') || (s.title && s.title.toLowerCase().includes('mlb live stream'))) providerName = 'MLB El Mundo';
     else if (s.title && s.title.toLowerCase().includes('24/7')) providerName = 'Direct IPTV';
 
     let originalTitle = s.title || '';
