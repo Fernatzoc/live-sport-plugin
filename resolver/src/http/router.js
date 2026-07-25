@@ -20,7 +20,15 @@ export async function route(req, res) {
     return
   }
 
-  const baseOrigin = process.env.BASE_URL || `http://${req.headers.host}`
+  const proto = (req.headers['x-forwarded-proto'] || 'http').split(',')[0].trim()
+  const host = req.headers['x-forwarded-host'] || req.headers.host
+  
+  let baseOrigin = process.env.BASE_URL || `${proto}://${host}`
+  if (req.headers['x-forwarded-host']) {
+    const fwHost = req.headers['x-forwarded-host'].split(',')[0].trim()
+    baseOrigin = `${proto}://${fwHost}`
+  }
+
   const loc = new URL(req.url ?? '/', baseOrigin)
   const { pathname, searchParams, origin } = loc
 

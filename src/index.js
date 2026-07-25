@@ -31,16 +31,31 @@ const container = require('./container');
 
 const RESOLVER_PORT = process.env.RESOLVER_PORT || '3000';
 const resolverPath = path.join(__dirname, '..', 'resolver', 'src', 'server.js');
-console.log(`Starting Stream Resolver at ${resolverPath} on port ${RESOLVER_PORT}...`);
-const resolverProcess = spawn('node', [resolverPath], {
-  stdio: 'inherit',
-  env: { ...process.env, PORT: RESOLVER_PORT, BASE_URL: BASE_URL }
-});
-resolverProcess.on('error', (err) => console.error('Resolver spawn error:', err));
-resolverProcess.on('exit', (code, signal) => console.error(`[FATAL] Resolver process exited with code ${code} and signal ${signal}. Streams will not work until restarted.`));
+let resolverProcess = null;
+let isShuttingDown = false;
+
+function spawnResolver() {
+  if (isShuttingDown) return;
+  console.log(`Starting Stream Resolver at ${resolverPath} on port ${RESOLVER_PORT}...`);
+  resolverProcess = spawn('node', [resolverPath], {
+    stdio: 'inherit',
+    env: { ...process.env, PORT: RESOLVER_PORT, BASE_URL: BASE_URL }
+  });
+  
+  resolverProcess.on('error', (err) => console.error('[FATAL] Resolver spawn error:', err));
+  
+  resolverProcess.on('exit', (code, signal) => {
+    if (isShuttingDown) return;
+    console.error(`[FATAL] Resolver process exited with code ${code} and signal ${signal}. Restarting in 2 seconds...`);
+    setTimeout(spawnResolver, 2000);
+  });
+}
+
+spawnResolver();
 
 // Ensure child process is killed when the parent exits
 function shutdownResolver() {
+  isShuttingDown = true;
   if (resolverProcess && !resolverProcess.killed) {
     console.log('Shutting down Stream Resolver...');
     resolverProcess.kill();
@@ -83,6 +98,7 @@ app.get('/api/matches', (req, res) => {
 app.use('/api', createProxyMiddleware({
   target: `http://127.0.0.1:${RESOLVER_PORT}/api`,
   changeOrigin: true,
+  xfwd: true,
   logLevel: 'debug',
   onError: (err, req, res) => {
     console.error('[Proxy Error] Failed to proxy /api request to internal resolver:', err.message);
@@ -98,58 +114,61 @@ app.use('/api', createProxyMiddleware({
 // on the incoming request, instead of hardcoding BASE_URL. This fixes issues where
 // the addon is accessed remotely but falls back to localhost URLs.
 app.use('/stream/', (req, res, next) => {
+  const originalWrite = res.write;
   const originalEnd = res.end;
-  res.end = function(chunk, encoding, callback) {
-    if (chunk) {
-      let isBuffer = Buffer.isBuffer(chunk);
-      let bodyString = isBuffer ? chunk.toString('utf8') : chunk;
+  let chunks = [];
 
-      if (typeof bodyString === 'string') {
-        try {
-          const body = JSON.parse(bodyString);
-          if (body && Array.isArray(body.streams)) {
-            const host = req.get('host');
-            const proto = req.headers['x-forwarded-proto'] || req.protocol;
-            const dynamicBaseUrl = `${proto}://${host}`;
-            
-            let modified = false;
-            body.streams.forEach(s => {
-              // Fix externalUrl
-              if (s.externalUrl && s.externalUrl.startsWith('/watch')) {
-                s.externalUrl = `${dynamicBaseUrl}${s.externalUrl}`;
-                modified = true;
-              } else if (BASE_URL && s.externalUrl && s.externalUrl.startsWith(BASE_URL)) {
-                s.externalUrl = s.externalUrl.replace(BASE_URL, dynamicBaseUrl);
-                modified = true;
-              }
-              
-              // Fix direct stream url
-              if (s.url && s.url.startsWith('/api/hls')) {
-                s.url = `${dynamicBaseUrl}${s.url}`;
-                modified = true;
-              } else if (BASE_URL && s.url && s.url.startsWith(BASE_URL)) {
-                s.url = s.url.replace(BASE_URL, dynamicBaseUrl);
-                modified = true;
-              }
-            });
-            
-            if (modified) {
-              bodyString = JSON.stringify(body);
-              if (isBuffer) {
-                chunk = Buffer.from(bodyString, 'utf8');
-              } else {
-                chunk = bodyString;
-              }
-              res.setHeader('Content-Length', Buffer.byteLength(bodyString));
-            }
-          }
-        } catch (e) {
-          // ignore parse error
-        }
-      }
-    }
-    return originalEnd.call(this, chunk, encoding, callback);
+  res.write = function (chunk) {
+    if (chunk) chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
   };
+
+  res.end = function (chunk, encoding, callback) {
+    if (chunk) chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
+
+    if (chunks.length > 0) {
+      const bodyBuffer = Buffer.concat(chunks);
+      const bodyString = bodyBuffer.toString('utf8');
+      
+      try {
+        const body = JSON.parse(bodyString);
+        if (body && Array.isArray(body.streams)) {
+          const host = req.get('host');
+          const proto = req.headers['x-forwarded-proto'] || req.protocol;
+          const dynamicBaseUrl = `${proto}://${host}`;
+          
+          let modified = false;
+          body.streams.forEach(s => {
+            if (s.externalUrl && s.externalUrl.startsWith('/watch')) {
+              s.externalUrl = `${dynamicBaseUrl}${s.externalUrl}`;
+              modified = true;
+            } else if (BASE_URL && s.externalUrl && s.externalUrl.startsWith(BASE_URL)) {
+              s.externalUrl = s.externalUrl.replace(BASE_URL, dynamicBaseUrl);
+              modified = true;
+            }
+            
+            if (s.url && s.url.startsWith('/api/hls')) {
+              s.url = `${dynamicBaseUrl}${s.url}`;
+              modified = true;
+            } else if (BASE_URL && s.url && s.url.startsWith(BASE_URL)) {
+              s.url = s.url.replace(BASE_URL, dynamicBaseUrl);
+              modified = true;
+            }
+          });
+          
+          if (modified) {
+            const newBodyString = JSON.stringify(body);
+            const newBuffer = Buffer.from(newBodyString, 'utf8');
+            res.setHeader('Content-Length', newBuffer.length);
+            return originalEnd.call(res, newBuffer, 'utf8', callback);
+          }
+        }
+      } catch (e) { }
+    }
+    
+    const finalBuffer = Buffer.concat(chunks);
+    originalEnd.call(res, finalBuffer, encoding, callback);
+  };
+  
   next();
 });
 

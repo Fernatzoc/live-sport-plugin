@@ -18,11 +18,11 @@ async function handleStream(type, id, config) {
 
   const streams = [];
 
-  const SOURCE_PRIORITY = { admin: 1, echo: 1, golf: 1, delta: 1, 'watchfooty': 2, 'cdnlive': 3, 'streamsports99': 4, 'streamic': 5, 'ppvdomains': 6, 'streamfree': 7, 'timstreams': 8, 'bintv': 9, 'ntv': 10, 'sportyhunter': 11, 'streamsports': 12, 'iptv-org': 13 };
+  const SOURCE_PRIORITY = { admin: 1, echo: 1, golf: 1, delta: 1, 'watchfooty': 2, 'cdnlive': 3, 'streamsports99': 4, 'streamic': 5, 'ppvdomains': 6, 'strims24': 7, 'streamfree': 8, 'timstreams': 9, 'bintv': 10, 'ntv': 11, 'sportyhunter': 12, 'streamsports': 13, 'iptv-org': 14 };
   const sortedSources = [...match.sources].sort((a, b) => {
     // If a source isn't in the list, but it's not one of our known fallback providers, 
     // it's likely a new Streamed.pk source. Give it priority 1.5 so it stays near the top.
-    const getPriority = (src) => SOURCE_PRIORITY[src] ?? (['watchfooty', 'cdnlive', 'streamsports99', 'streamic', 'ppvdomains', 'streamfree', 'timstreams', 'bintv', 'ntv', 'sportyhunter', 'streamsports', 'iptv-org'].includes(src) ? 99 : 1.5);
+    const getPriority = (src) => SOURCE_PRIORITY[src] ?? (['watchfooty', 'cdnlive', 'streamsports99', 'streamic', 'ppvdomains', 'strims24', 'streamfree', 'timstreams', 'bintv', 'ntv', 'sportyhunter', 'streamsports', 'iptv-org'].includes(src) ? 99 : 1.5);
     const pa = getPriority(a.source);
     const pb = getPriority(b.source);
     if (pa !== pb) return pa - pb;
@@ -143,7 +143,7 @@ async function handleStream(type, id, config) {
     streamfree: 'StreamFree', timstreams: 'TimStreams', bintv: 'BinTV',
     ntv: 'NTV', sportyhunter: 'SportyHunter', streamsports: 'StreamSports',
     'iptv-org': 'Direct IPTV', 'streamsports99': 'StreamSports99',
-    'ppvdomains': 'PPV Domains', 'streamic': 'Streamic'
+    'ppvdomains': 'PPV Domains', 'streamic': 'Streamic', 'strims24': 'Strims24'
   };
 
   streams.forEach(s => {
@@ -169,6 +169,7 @@ async function handleStream(type, id, config) {
     else if (s.title && s.title.toLowerCase().includes('streamsports99')) providerName = 'StreamSports99';
     else if (s.title && s.title.toLowerCase().includes('ppv domains')) providerName = 'PPV Domains';
     else if (s.title && s.title.toLowerCase().includes('streamic')) providerName = 'Streamic';
+    else if (s.title && s.title.toLowerCase().includes('strims24')) providerName = 'Strims24';
     else if (s.title && s.title.toLowerCase().includes('24/7')) providerName = 'Direct IPTV';
 
     let originalTitle = s.title || '';
@@ -200,12 +201,24 @@ async function handleStream(type, id, config) {
     
     // If it's a direct m3u8 stream and not routed through our proxy, mark it notWebReady
     if (s.url && s.url.includes('.m3u8') && !s.url.includes('/api/hls')) {
-      s.behaviorHints.notWebReady = true;
-      if (providerName === 'Streamed.pk') {
+      if (providerName !== 'Direct IPTV') {
+        s.behaviorHints.notWebReady = true;
+      }
+      
+      let referer = '';
+      if (providerName === 'Streamed.pk') referer = 'https://embed.st/';
+      else if (providerName === 'WatchFooty') referer = 'https://watchfooty.st/';
+      else if (providerName === 'CDNLiveTV') referer = 'https://cdnlivetv.tv/';
+      else if (providerName === 'Streamic') referer = 'https://streamic.st/';
+      else if (providerName === 'PPV Domains' || providerName === 'BinTV') referer = 'https://ppv.st/';
+      else if (providerName === 'StreamSports99' || providerName === 'StreamSports') referer = 'https://cdnlivetv.is/';
+      else if (providerName === 'SportyHunter') referer = 'https://sportyhunter.xyz/';
+      
+      if (referer) {
         s.behaviorHints.proxyHeaders = {
           request: {
-            "Referer": "https://embed.st/",
-            "Origin": "https://embed.st"
+            "Referer": referer,
+            "Origin": referer
           }
         };
       }

@@ -71,12 +71,20 @@ class WatchFootyProvider extends BaseProvider {
       if (match && match.streams && Array.isArray(match.streams)) {
         match.streams.forEach((s, idx) => {
           if (s.url) {
-            streams.push(new StreamEntity({
+            const isDirect = s.url.includes('.m3u8') || s.url.includes('.mp4');
+            const entityParams = {
               name: `WatchFooty`,
               title: `WatchFooty Stream ${idx + 1}`,
-              url: s.url,
               resolution: s.quality ? String(s.quality).toUpperCase() : 'SD'
-            }));
+            };
+            
+            if (isDirect) {
+              entityParams.url = s.url;
+            } else {
+              entityParams.externalUrl = `/watch?url=${encodeURIComponent(s.url)}&title=${encodeURIComponent(matchTitle || 'WatchFooty')}`;
+            }
+            
+            streams.push(new StreamEntity(entityParams));
           }
         });
       }

@@ -98,6 +98,18 @@ async function relay(res, url, slot, origin) {
   res.writeHead(200, { ...cors, 'Content-Type': 'video/mp2t', 'Cache-Control': 'no-cache' })
   
   const segmentStream = createSegmentStream()
+  
+  bodyStream.on('error', (err) => {
+    console.error(`[Stream Error] Upstream fetch failed during segment streaming:`, err.message)
+    segmentStream.destroy()
+    if (!res.headersSent) res.writeHead(502)
+    res.end()
+  })
+  
+  segmentStream.on('error', (err) => {
+    res.destroy()
+  })
+
   segmentStream.pipe(res)
   
   segmentStream.write(firstChunk)
