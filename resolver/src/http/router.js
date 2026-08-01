@@ -33,7 +33,7 @@ export async function route(req, res) {
   const { pathname, searchParams, origin } = loc
 
   try {
-    if (pathname === '/api/hls') {
+    if (pathname.startsWith('/api/hls')) {
       await serve(res, searchParams, origin)
       return
     }

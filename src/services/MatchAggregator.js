@@ -46,11 +46,13 @@ class MatchAggregator {
             finalMatches.push(match);
           } else {
             // Merge sources
-            match.sources.forEach(src => {
-              if (!existing.sources.find(s => s.id === src.id && s.source === src.source)) {
-                existing.sources.push(src);
-              }
-            });
+            if (match.sources && Array.isArray(match.sources)) {
+              match.sources.forEach(src => {
+                if (!existing.sources.find(s => s.id === src.id && s.source === src.source)) {
+                  existing.sources.push(src);
+                }
+              });
+            }
             // Prefer popular = '1'
             if (match.popular === '1') {
               existing.popular = '1';
@@ -110,7 +112,9 @@ class MatchAggregator {
     });
 
     console.log(`[MatchAggregator] Sync complete. Merged ${activeMatches.length} active events.`);
-    this.cacheService.setMatches(activeMatches);
+    if (activeMatches.length > 0) {
+      this.cacheService.setMatches(activeMatches);
+    }
     return activeMatches;
   }
 }

@@ -77,11 +77,20 @@ async function handleStream(type, id, config) {
           }
         }
       } else if (sourceName === 'iptv-org') {
+        const proxyHeaders = {};
+        if (src.user_agent) proxyHeaders['User-Agent'] = src.user_agent;
+        if (src.referrer) proxyHeaders['Referer'] = src.referrer;
+
         resStreams = [{
           name: 'Nuvio Direct',
           title: `24/7 TV (${src.quality || 'Auto'})`,
           url: src.url,
-          resolution: src.quality
+          resolution: src.quality,
+          behaviorHints: {
+            proxyHeaders: {
+              request: proxyHeaders
+            }
+          }
         }];
       } else {
         resStreams = [];
@@ -149,8 +158,8 @@ async function handleStream(type, id, config) {
 
   streams.forEach(s => {
     let quality = s.resolution || s.quality || 'Auto';
-    if (quality.includes('x')) {
-       const h = quality.split('x')[1];
+    if (String(quality).includes('x')) {
+       const h = String(quality).split('x')[1];
        quality = h + 'p';
     }
     

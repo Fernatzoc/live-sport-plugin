@@ -3,7 +3,7 @@ export function relayLink(base, target, slot) {
   if (slot.path) q.set('embed', slot.path)
   if (slot.origin) q.set('embedOrigin', slot.origin)
   if (slot.referer) q.set('referer', slot.referer)
-  return `${base}/api/hls?${q}`
+  return `${base}/api/hls/playlist.m3u8?${q}`
 }
 
 export function parseRelaySlot(params) {

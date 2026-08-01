@@ -107,6 +107,7 @@ class Strims24Provider extends BaseProvider {
     const url = `${this.flashBase}/${prefix}${sportId}_0_2_en_1`;
     try {
       const res = await this.fetchData.fire(url, { 'x-fsign': this.flashSign, accept: '*/*' });
+      if (!res) return [];
       const text = await res.text();
       return this.parseFlashData(text, sport);
     } catch (e) {
@@ -119,6 +120,7 @@ class Strims24Provider extends BaseProvider {
     try {
       const url = `${this.baseUrl}/api/v1/${sport}/${date}`;
       const res = await this.fetchData.fire(url);
+      if (!res) return [];
       const data = await res.json();
       return Array.isArray(data.items) ? data.items : [];
     } catch (e) {
@@ -130,6 +132,7 @@ class Strims24Provider extends BaseProvider {
   async fetchStrimsChannels() {
     try {
       const res = await this.fetchData.fire(`${this.baseUrl}/api/v1/channels`);
+      if (!res) return {};
       const data = await res.json();
       const arr = Array.isArray(data) ? data : (data && Array.isArray(data.items)) ? data.items : (data && Array.isArray(data.channels)) ? data.channels : [];
       const userChannels = {};
@@ -151,6 +154,7 @@ class Strims24Provider extends BaseProvider {
   async fetchMatchTvChannelIds(matchId) {
     try {
       const res = await this.fetchData.fire(`${this.flashBase}/df_dos_1_${matchId}_`, { 'x-fsign': this.flashSign, accept: '*/*' });
+      if (!res) return [];
       const text = await res.text();
       const m = text.match(/AL÷(\{[^¬]+\})/);
       return m ? this.parseTvChannels(m[1]) : [];

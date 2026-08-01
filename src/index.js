@@ -113,7 +113,9 @@ app.use('/api', createProxyMiddleware({
 // so we can dynamically rewrite stream URLs to use the correct absolute host based 
 // on the incoming request, instead of hardcoding BASE_URL. This fixes issues where
 // the addon is accessed remotely but falls back to localhost URLs.
-app.use('/stream/', (req, res, next) => {
+app.use((req, res, next) => {
+  if (!req.path.includes('/stream/')) return next();
+  
   const originalWrite = res.write;
   const originalEnd = res.end;
   let chunks = [];
@@ -162,7 +164,9 @@ app.use('/stream/', (req, res, next) => {
             return originalEnd.call(res, newBuffer, 'utf8', callback);
           }
         }
-      } catch (e) { }
+      } catch (e) {
+        console.error('[Proxy Error]', e.message);
+      }
     }
     
     const finalBuffer = Buffer.concat(chunks);
@@ -178,12 +182,13 @@ app.get('/:config?/manifest.json', (req, res, next) => {
   let configStr = req.params.config;
   let parsedConfig = {};
   if (configStr) {
-    // If there is a config string but it's not JSON, skip custom handling
-    if (!configStr.startsWith('%7B') && !configStr.startsWith('{')) {
-      return next();
-    }
     try {
-      parsedConfig = JSON.parse(decodeURIComponent(configStr));
+      if (configStr.startsWith('%7B') || configStr.startsWith('{')) {
+        parsedConfig = JSON.parse(decodeURIComponent(configStr));
+      } else {
+        const decoded = Buffer.from(configStr, 'base64').toString('utf-8');
+        parsedConfig = JSON.parse(decoded);
+      }
     } catch (e) {
       return next();
     }
@@ -376,7 +381,7 @@ app.get('/watch', (req, res) => {
       const urlParams = new URLSearchParams(window.location.search);
       const customReferer = urlParams.get('referer') || 'https://embed.st/';
       const customOrigin = urlParams.get('embedOrigin') || 'https://embed.st';
-      finalUrl = '/api/hls?url=' + encodeURIComponent(targetUrl) + '&referer=' + encodeURIComponent(customReferer) + '&embedOrigin=' + encodeURIComponent(customOrigin);
+      finalUrl = '/api/hls/playlist.m3u8?url=' + encodeURIComponent(targetUrl) + '&referer=' + encodeURIComponent(customReferer) + '&embedOrigin=' + encodeURIComponent(customOrigin);
     }
 
     const urlParams = new URLSearchParams(window.location.search);
@@ -434,7 +439,10 @@ app.get('/watch', (req, res) => {
         });
 
         const hls = new Hls({
-          liveSyncDurationCount: 7,
+          liveSyncDurationCount: 3,
+          liveMaxLatencyDurationCount: 5,
+          lowLatencyMode: true,
+          enableWorker: true,
           loader: engine.createLoaderClass()
         });
 
@@ -451,7 +459,10 @@ app.get('/watch', (req, res) => {
         });
       } else if (Hls.isSupported()) {
         const hls = new Hls({
-          liveSyncDurationCount: 7
+          liveSyncDurationCount: 3,
+          liveMaxLatencyDurationCount: 5,
+          lowLatencyMode: true,
+          enableWorker: true
         });
         hls.loadSource(finalUrl);
         hls.attachMedia(video);

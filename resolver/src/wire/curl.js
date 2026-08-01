@@ -1,4 +1,13 @@
 import { fetchHeaders } from './headers.js'
+import { Agent, setGlobalDispatcher } from 'undici'
+
+// Use a shared Keep-Alive agent for native fetch to prevent tearing down TCP connections
+setGlobalDispatcher(new Agent({
+  keepAliveTimeout: 60000, // 1 minute
+  keepAliveMaxTimeout: 600000,
+  connections: 500,
+  pipelining: 10
+}))
 
 function hdrs(slot) {
   const referer = slot.referer || `${slot.origin}/`
@@ -19,8 +28,8 @@ export async function pull(url, slot) {
 
 export async function pullStream(url, slot) {
   const headers = hdrs(slot)
-  // Increase timeout for streaming to 30s
-  const res = await fetch(url, { headers, signal: AbortSignal.timeout(30000) })
+  // Removed hard 30s timeout so live streams don't randomly abort
+  const res = await fetch(url, { headers })
   if (!res.ok) throw new Error(`upstream ${res.status}`)
   return res
 }

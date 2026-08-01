@@ -387,7 +387,9 @@
       }
 
       if (Object.keys(config).length > 0) {
-        const encoded = encodeURIComponent(JSON.stringify(config));
+        // Use Base64 encoding to avoid URL routing issues with slashes or braces
+        // We use encodeURIComponent/unescape to safely handle any non-ASCII characters
+        const encoded = btoa(unescape(encodeURIComponent(JSON.stringify(config))));
         manifestUrl = window.location.origin + '/' + encoded + '/manifest.json';
       }
 

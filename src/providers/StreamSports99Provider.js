@@ -154,7 +154,7 @@ class StreamSports99Provider extends BaseProvider {
                     if (m3u8Url) {
                       const embedPath = `streamsports99/${sourceId || 'match'}/stream${idx+1}`;
                       const embedOrigin = 'https://streamsports99.fun';
-                      const proxiedUrl = `/api/hls?url=${encodeURIComponent(m3u8Url)}&referer=${encodeURIComponent('https://streamsports99.fun/')}&embed=${encodeURIComponent(embedPath)}&embedOrigin=${encodeURIComponent(embedOrigin)}`;
+                      const proxiedUrl = `/api/hls/playlist.m3u8?url=${encodeURIComponent(m3u8Url)}&referer=${encodeURIComponent('https://streamsports99.fun/')}&embed=${encodeURIComponent(embedPath)}&embedOrigin=${encodeURIComponent(embedOrigin)}`;
                       streams.push(new StreamEntity({
                         name: `StreamSports99`,
                         title: ch.channel_name || `VIP Stream ${idx + 1}`,
