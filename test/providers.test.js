@@ -101,6 +101,10 @@ describe('MlbElMundoProvider', () => {
       .post('/embed/decrypt.php', 'input=abc123secret')
       .reply(200, 'https://edgestream1.pro/hls/ch15.m3u8?st=token');
 
+    nock('https://edgestream1.pro')
+      .head('/hls/ch15.m3u8?st=token')
+      .reply(200);
+
     const streams = await provider.resolveStream('https://good.ltabasket.com/m-day-1.php', 'baseball', 'MLB: Yankees vs Red Sox');
 
     expect(streams).toHaveLength(1);
@@ -134,6 +138,10 @@ describe('RojadirectaProvider', () => {
         href: 'https://cdn.example.com/live/stream.m3u8'
       }
     ]);
+
+    nock('https://cdn.example.com')
+      .head('/live/stream.m3u8')
+      .reply(200);
 
     const streams = await provider.resolveStream('match_1', 'football', 'Real Madrid vs Barcelona');
     expect(streams).toHaveLength(1);

@@ -534,19 +534,23 @@ class RojadirectaProvider extends BaseProvider {
       const isDirect = s.href.includes('.m3u8');
 
       if (isDirect) {
+        const reqHeaders = {
+          "Origin": "http://www.rojadirecta.eu",
+          "Referer": "http://www.rojadirecta.eu/",
+          "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/127.0.0.0 Safari/537.36"
+        };
+        const isLive = await this.verifyStream(s.href, reqHeaders);
+        if (!isLive) return [];
+
         return [
           new StreamEntity({
             name: 'Nuvio Direct',
-            title: title,
+            title: `Rojadirecta: ${title}`,
             url: s.href,
             behaviorHints: {
               notWebReady: true,
               proxyHeaders: {
-                request: {
-                  "Origin": "http://www.rojadirecta.eu",
-                  "Referer": "http://www.rojadirecta.eu/",
-                  "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/127.0.0.0 Safari/537.36"
-                }
+                request: reqHeaders
               }
             },
             resolution: 'HD'
@@ -565,27 +569,33 @@ class RojadirectaProvider extends BaseProvider {
       try {
         const resolved = await this.findIframeStream(cleanUrl, 'http://www.rojadirecta.eu/', 0, state);
         if (resolved && resolved.url) {
-          const fallbackUrl = state.playerUrl || state.deepestUrl || cleanUrl || s.href;
-
           const ref = resolved.referer || 'http://www.rojadirecta.eu/';
           let orig = resolved.origin;
           if (!orig && ref) {
             try { orig = new URL(ref).origin; } catch (e) { orig = 'http://www.rojadirecta.eu'; }
           }
 
+          const reqHeaders = {
+            "Origin": orig || "http://www.rojadirecta.eu",
+            "Referer": ref,
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/127.0.0.0 Safari/537.36"
+          };
+
+          const isLive = await this.verifyStream(resolved.url, reqHeaders);
+          if (!isLive) {
+            console.log(`[${this.name}] Stream failed health check probe: ${resolved.url}`);
+            return [];
+          }
+
           return [
             new StreamEntity({
               name: 'Nuvio Direct',
-              title: title + ' ⚡',
+              title: `Rojadirecta: ${title} ⚡`,
               url: resolved.url,
               behaviorHints: {
                 notWebReady: true,
                 proxyHeaders: {
-                  request: {
-                    "Origin": orig || "http://www.rojadirecta.eu",
-                    "Referer": ref,
-                    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/127.0.0.0 Safari/537.36"
-                  }
+                  request: reqHeaders
                 }
               },
               resolution: 'HD'

@@ -168,22 +168,27 @@ class MlbElMundoProvider extends BaseProvider {
       const extracted = await this.extractDirectM3u8(watchUrl);
 
       if (extracted && extracted.m3u8) {
-        streams.push(new StreamEntity({
-          name: 'Nuvio Direct',
-          title: `MLB Live Stream ⚡`,
-          url: extracted.m3u8,
-          behaviorHints: {
-            notWebReady: true,
-            proxyHeaders: {
-              request: {
-                "Origin": "https://streame.center",
-                "Referer": "https://streame.center/",
-                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/127.0.0.0 Safari/537.36"
+        const reqHeaders = {
+          "Origin": "https://streame.center",
+          "Referer": "https://streame.center/",
+          "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/127.0.0.0 Safari/537.36"
+        };
+
+        const isLive = await this.verifyStream(extracted.m3u8, reqHeaders);
+        if (isLive) {
+          streams.push(new StreamEntity({
+            name: 'Nuvio Direct',
+            title: `MLB Live Stream ⚡`,
+            url: extracted.m3u8,
+            behaviorHints: {
+              notWebReady: true,
+              proxyHeaders: {
+                request: reqHeaders
               }
-            }
-          },
-          resolution: 'HD'
-        }));
+            },
+            resolution: 'HD'
+          }));
+        }
       }
     } catch (err) {
       console.warn(`[${this.name}] resolveStream failed:`, err.message);

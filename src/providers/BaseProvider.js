@@ -35,6 +35,32 @@ class BaseProvider {
   }
 
   /**
+   * Probes an m3u8 stream to verify if it is reachable and responsive
+   */
+  async verifyStream(url, headers = {}, timeoutMs = 2500) {
+    if (!url || !url.startsWith('http')) return false;
+    try {
+      const res = await fetch(url, {
+        method: 'HEAD',
+        headers: headers || {},
+        signal: AbortSignal.timeout(timeoutMs)
+      });
+      if (res.ok) return true;
+      if (res.status === 405 || res.status === 403) {
+        const getRes = await fetch(url, {
+          method: 'GET',
+          headers: { ...(headers || {}), Range: 'bytes=0-1024' },
+          signal: AbortSignal.timeout(timeoutMs)
+        });
+        return getRes.ok;
+      }
+      return false;
+    } catch (e) {
+      return false;
+    }
+  }
+
+  /**
    * Helper to normalize category strings across all providers
    */
   normalizeCategory(cat) {
