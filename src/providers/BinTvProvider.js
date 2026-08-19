@@ -7,7 +7,6 @@ class BinTvProvider extends BaseProvider {
   constructor(opts) {
     super(opts);
     this.name = 'BinTv';
-    // BINTV moved to ppv.st API
     this.mainUrl = 'https://api.ppv.st/api/streams';
     
     this.fetchMain = this.circuitBreaker.wrap(`${this.name}_fetchMain`, async () => {
@@ -20,7 +19,6 @@ class BinTvProvider extends BaseProvider {
 
   async getMatches() {
     const matches = [];
-
     try {
       const data = await this.fetchMain.fire();
       if (data && Array.isArray(data.streams)) {
@@ -29,27 +27,16 @@ class BinTvProvider extends BaseProvider {
             categoryObj.streams.forEach((s) => {
               const title = s.name || `Event ${s.id}`;
               const sources = [];
-              
               if (s.iframe) {
-                sources.push({
-                  source: 'bintv',
-                  id: s.uri_name || s.id.toString(),
-                  url: s.iframe
-                });
+                sources.push({ source: 'bintv', id: s.uri_name || s.id.toString(), url: s.iframe });
               }
-
               if (Array.isArray(s.substreams)) {
                 s.substreams.forEach(sub => {
                   if (sub.iframe) {
-                    sources.push({
-                      source: 'bintv',
-                      id: sub.uri_name || sub.id.toString(),
-                      url: sub.iframe
-                    });
+                    sources.push({ source: 'bintv', id: sub.uri_name || sub.id.toString(), url: sub.iframe });
                   }
                 });
               }
-
               if (sources.length > 0) {
                 let cat = s.category_name || categoryObj.category || 'other';
                 matches.push(new MatchEntity({
@@ -69,7 +56,6 @@ class BinTvProvider extends BaseProvider {
     } catch (e) {
       console.error(`[${this.name}] Error fetching PPV JSON:`, e.message);
     }
-
     return matches;
   }
 
@@ -89,7 +75,7 @@ class BinTvProvider extends BaseProvider {
         streams.push(new StreamEntity({
           name: `Nuvio Web Player`,
           title: `BinTV (${sourceId.split('/').pop()})`,
-          externalUrl: `${BASE_URL}/watch?url=${encodeURIComponent(watchUrl)}&title=${encodeURIComponent(matchTitle || 'Live Event')}`
+          externalUrl: `/watch?url=${encodeURIComponent(watchUrl)}&title=${encodeURIComponent(matchTitle || 'Live Event')}`
         }));
       }
     } catch (err) {

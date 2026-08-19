@@ -94,6 +94,8 @@ class Strims24Provider extends BaseProvider {
           awayTeam: data.AF || '',
           startTime: parseInt(data.AD || '0', 10),
           tvChannelIds: this.parseTvChannels(data.AL),
+          team1Logo: data.OA ? `https://www.flashscore.com/res/image/data/${data.OA}` : null,
+          team2Logo: data.OB ? `https://www.flashscore.com/res/image/data/${data.OB}` : null
         });
       }
     });
@@ -187,6 +189,8 @@ class Strims24Provider extends BaseProvider {
         }
 
         const haveChannels = Object.keys(userChannels).length > 0;
+        const now = Date.now();
+        const FOUR_HOURS = 4 * 60 * 60 * 1000;
 
         for (const e of flashRaw) {
           const hasChannelMatch = haveChannels && e.tvChannelIds.some(id => userChannels[id]);
@@ -195,29 +199,57 @@ class Strims24Provider extends BaseProvider {
           if (hasChannelMatch || isManual) {
             const title = e.eventTitle || ((e.homeTeam && e.awayTeam) ? `${e.homeTeam} - ${e.awayTeam}` : (e.homeTeam || e.tournamentName));
             
+            const kickoff = e.startTime ? e.startTime * 1000 : now;
+            const isLive = kickoff <= now && kickoff > now - FOUR_HOURS;
+            
             matches.push(new MatchEntity({
               id: `FS:${e.id}`,
               title: title,
               category: this.normalizeCategory(sport),
-              date: e.startTime ? (e.startTime * 1000).toString() : Date.now().toString(),
-              popular: '0',
+              date: kickoff.toString(),
+              popular: isLive ? '1' : '0',
               league: e.tournamentName,
+              team1: { name: e.homeTeam, logo: e.team1Logo },
+              team2: { name: e.awayTeam, logo: e.team2Logo },
               sources: [{ source: 'strims24', id: `FS:${e.id}`, original_sport: sport }]
             }));
           }
         }
 
         for (const it of customItems) {
+           const kickoff = it.start_ts ? it.start_ts * 1000 : now;
+           const isLive = kickoff <= now && kickoff > now - FOUR_HOURS;
            matches.push(new MatchEntity({
-              id: it.match_id,
+              id: `CUST:${it.match_id}`,
               title: it.name || it.match_id,
               category: this.normalizeCategory(sport),
-              date: it.start_ts ? (it.start_ts * 1000).toString() : Date.now().toString(),
-              popular: '0',
-              sources: [{ source: 'strims24', id: it.match_id, original_sport: sport }]
+              date: kickoff.toString(),
+              popular: isLive ? '1' : '0',
+              sources: [{ source: 'strims24', id: `CUST:${it.match_id}`, original_sport: sport }]
             }));
         }
       }
+
+      // Add standalone 24/7 channels as network matches
+      const addedChannelIds = new Set();
+      for (const key of Object.keys(userChannels)) {
+        const ch = userChannels[key];
+        if (!ch || !ch.id) continue;
+        const chIdStr = String(ch.id);
+        
+        if (addedChannelIds.has(chIdStr)) continue;
+        addedChannelIds.add(chIdStr);
+        
+        matches.push(new MatchEntity({
+          id: `CH:${ch.id}`,
+          title: ch.name || `Channel ${ch.id}`,
+          category: 'networks',
+          date: Date.now().toString(),
+          popular: '1', // 24/7 networks are always live
+          sources: [{ source: 'strims24', id: `CH:${ch.id}`, original_sport: 'network' }]
+        }));
+      }
+
     } catch (e) {
       console.error(`[${this.name}] Error in getMatches:`, e.message);
     }
@@ -227,18 +259,27 @@ class Strims24Provider extends BaseProvider {
   async resolveStream(sourceId, matchCategory, matchTitle) {
     try {
       const streams = [];
-      const cleanId = sourceId.replace(/^(FS:|CUST:)/, '');
       const isFs = sourceId.startsWith('FS:');
+      const isCh = sourceId.startsWith('CH:');
+      const cleanId = sourceId.replace(/^(FS:|CUST:|CH:)/, '');
 
-      const dbDetailRes = await this.fetchData.fire(`${this.baseUrl}/api/v1/match/${sourceId}`).catch(() => null);
       let dbDetail = null;
-      if (dbDetailRes) dbDetail = await dbDetailRes.json();
+      if (!isCh) {
+          const dbDetailRes = await this.fetchData.fire(`${this.baseUrl}/api/v1/match/${sourceId}`).catch(() => null);
+          if (dbDetailRes) dbDetail = await dbDetailRes.json();
+      }
 
       const userChannels = await this.fetchStrimsChannels();
 
       const channels = [];
       const disabledIds = new Set();
-      const dbChannels = (dbDetail && Array.isArray(dbDetail.channels)) ? dbDetail.channels : [];
+      
+      let dbChannels = [];
+      if (isCh) {
+          dbChannels = [{ id: cleanId, name: 'Network Stream', enabled: true }];
+      } else {
+          dbChannels = (dbDetail && Array.isArray(dbDetail.channels)) ? dbDetail.channels : [];
+      }
 
       for (const ch of dbChannels) {
         if (ch.enabled === false) {
@@ -276,24 +317,161 @@ class Strims24Provider extends BaseProvider {
 
       for (const ch of uniqueChannels) {
         const embedUrl = `https://main.wwin.cloud/player/lean/${encodeURIComponent(ch.id)}`;
+        let directUrl = null;
+        let proxyReqHeaders = {
+             'Referer': 'https://strims24.pl/'
+        };
+        
+        let premiumSlug = null;
+        const premiumUrlMatch = embedUrl.match(/\/premium\/([^?&]+)/);
+        if (premiumUrlMatch) {
+            premiumSlug = premiumUrlMatch[1];
+        } else {
+            const socialMatch = embedUrl.match(/\/social\/([a-z0-9-]+)/i);
+            if (socialMatch) premiumSlug = socialMatch[1].replace(/-/g, '');
+        }
+
+        if (!premiumSlug) {
+            try {
+                const embedRes = await this.proxyFetch(embedUrl, { headers: { 'Referer': 'https://strims24.pl/' } });
+                if (embedRes.ok) {
+                    const embedHtml = await embedRes.text();
+                    let premiumMatch = embedHtml.match(/src=["']\/premium\/([^"']+)["']/);
+                    if (!premiumMatch) {
+                        premiumMatch = embedHtml.match(/src=["']https:\/\/main\.wwin\.cloud\/premium\/([^"']+)["']/);
+                    }
+                    
+                    if (premiumMatch) {
+                        premiumSlug = premiumMatch[1];
+                    } else {
+                        const m3u8Match = embedHtml.match(/(https?:\/\/[^"']+\.m3u8[^"']*)/i);
+                        if (m3u8Match) {
+                            directUrl = m3u8Match[1];
+                        }
+                    }
+                }
+            } catch (e) {
+                console.error(`[${this.name}] Failed to extract direct stream for channel ${ch.id}`, e.message);
+            }
+        }
+
+        if (premiumSlug) {
+            try {
+                const psignRes = await this.proxyFetch(`https://main.wwin.cloud/psign/${encodeURIComponent(premiumSlug)}`, {
+                    headers: { 'Referer': `https://main.wwin.cloud/premium/${premiumSlug}`, 'Accept': 'application/json' }
+                });
+                const psignData = await psignRes.json();
+                if (psignData && psignData.url) {
+                    directUrl = psignData.url;
+                    proxyReqHeaders['Referer'] = 'https://main.wwin.cloud/';
+                }
+            } catch (e) {
+                console.error(`[${this.name}] Failed to fetch psign for slug ${premiumSlug}`, e.message);
+            }
+        }
+
+        if (directUrl) {
+            streams.push(new StreamEntity({
+              name: `Strims24 Channel`,
+              title: `[Direct] ${ch.name || `Channel ${ch.id}`}`,
+              url: directUrl,
+              behaviorHints: {
+                notWebReady: true,
+                proxyHeaders: {
+                  request: proxyReqHeaders
+                }
+              }
+            }));
+            continue;
+        }
+
         streams.push(new StreamEntity({
           name: `Strims24 Channel`,
           title: ch.name || `Channel ${ch.id}`,
-          externalUrl: `${BASE_URL}/watch?url=${encodeURIComponent(embedUrl)}&title=${encodeURIComponent(matchTitle || 'Live Event')}`
+          externalUrl: `/watch?url=${encodeURIComponent(embedUrl)}&title=${encodeURIComponent(matchTitle || 'Live Event')}`
         }));
       }
 
       if (dbDetail && Array.isArray(dbDetail.custom_urls)) {
         for (const cu of dbDetail.custom_urls) {
           if (cu.enabled === false) continue;
-          let embed = cu.url;
-          if (!/^https?:\/\//i.test(embed)) {
-             embed = `https://main.wwin.cloud${embed.startsWith('/') ? '' : '/'}${embed}`;
+          let embedUrl = cu.url;
+          if (!/^https?:\/\//i.test(embedUrl)) {
+             embedUrl = `https://main.wwin.cloud${embedUrl.startsWith('/') ? '' : '/'}${embedUrl}`;
           }
+
+          let directUrl = null;
+          let proxyReqHeaders = {
+             'Referer': 'https://strims24.pl/'
+          };
+          
+          let premiumSlug = null;
+          const premiumUrlMatch = embedUrl.match(/\/premium\/([^?&]+)/);
+          if (premiumUrlMatch) {
+              premiumSlug = premiumUrlMatch[1];
+          } else {
+              const socialMatch = embedUrl.match(/\/social\/([a-z0-9-]+)/i);
+              if (socialMatch) premiumSlug = socialMatch[1].replace(/-/g, '');
+          }
+
+          if (!premiumSlug) {
+              try {
+                  const embedRes = await this.proxyFetch(embedUrl, { headers: { 'Referer': 'https://strims24.pl/' } });
+                  if (embedRes.ok) {
+                      const embedHtml = await embedRes.text();
+                      let premiumMatch = embedHtml.match(/src=["']\/premium\/([^"']+)["']/);
+                      if (!premiumMatch) {
+                          premiumMatch = embedHtml.match(/src=["']https:\/\/main\.wwin\.cloud\/premium\/([^"']+)["']/);
+                      }
+                      
+                      if (premiumMatch) {
+                          premiumSlug = premiumMatch[1];
+                      } else {
+                          const m3u8Match = embedHtml.match(/(https?:\/\/[^"']+\.m3u8[^"']*)/i);
+                          if (m3u8Match) {
+                              directUrl = m3u8Match[1];
+                          }
+                      }
+                  }
+              } catch (e) {
+                  console.error(`[${this.name}] Failed to extract direct stream for custom ${cu.id}`, e.message);
+              }
+          }
+
+          if (premiumSlug) {
+              try {
+                  const psignRes = await this.proxyFetch(`https://main.wwin.cloud/psign/${encodeURIComponent(premiumSlug)}`, {
+                      headers: { 'Referer': `https://main.wwin.cloud/premium/${premiumSlug}`, 'Accept': 'application/json' }
+                  });
+                  const psignData = await psignRes.json();
+                  if (psignData && psignData.url) {
+                      directUrl = psignData.url;
+                      proxyReqHeaders['Referer'] = 'https://main.wwin.cloud/';
+                  }
+              } catch (e) {
+                  console.error(`[${this.name}] Failed to fetch psign for slug ${premiumSlug}`, e.message);
+              }
+          }
+
+          if (directUrl) {
+              streams.push(new StreamEntity({
+                 name: `Strims24 Custom`,
+                 title: `[Direct] ${cu.name || `Custom ${cu.id}`}`,
+                 url: directUrl,
+                 behaviorHints: {
+                   notWebReady: true,
+                   proxyHeaders: {
+                     request: proxyReqHeaders
+                   }
+                 }
+              }));
+              continue;
+          }
+
           streams.push(new StreamEntity({
              name: `Strims24 Custom`,
              title: cu.name || `Custom ${cu.id}`,
-             externalUrl: `${BASE_URL}/watch?url=${encodeURIComponent(embed)}&title=${encodeURIComponent(matchTitle || 'Live Event')}`
+             externalUrl: `/watch?url=${encodeURIComponent(embedUrl)}&title=${encodeURIComponent(matchTitle || 'Live Event')}`
           }));
         }
       }

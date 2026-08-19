@@ -37,7 +37,7 @@ class SportyHunterProvider extends BaseProvider {
           matches.push(new MatchEntity({
             id: `sporty_${m.id || index}`,
             title: m.title || m.name || `Sporty Match ${index}`,
-            category: (m.sport || 'other').toLowerCase(),
+            category: this.normalizeCategory(m.sport),
             date: m.timestamp || m.date || null,
             popular: '0',
             sources: [{ source: 'sportyhunter', id: m.id || index, url: m.url || m.streamUrl }]

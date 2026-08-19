@@ -5,15 +5,23 @@ const STREAMFREE_API = 'https://streamfree.top/streams';
 
 function normalizeCategory(cat) {
   if (!cat) return 'other';
-  cat = cat.toLowerCase().replace(/[^a-z0-9]/g, '');
+  if (typeof cat === 'object' && !Array.isArray(cat)) {
+    cat = cat.name || cat.title || 'other';
+  }
+  cat = String(cat).toLowerCase().replace(/[^a-z0-9]/g, '');
   if (cat.includes('soccer') || cat.includes('football')) return 'football';
   if (cat.includes('motor') || cat.includes('racing') || cat.includes('cycling') || cat.includes('f1')) return 'motorsport';
   if (cat.includes('americanfootball') || cat.includes('afl') || cat.includes('gridiron') || cat.includes('nfl')) return 'american_football';
   if (cat.includes('fight') || cat.includes('mma') || cat.includes('boxing') || cat.includes('wrestling') || cat.includes('knuckle') || cat.includes('ufc')) return 'mma';
   if (cat.includes('basketball') || cat.includes('nba')) return 'basketball';
   if (cat.includes('golf')) return 'golf';
-  if (cat.includes('liveshow') || cat.includes('uncategorized')) return 'other';
   if (cat.includes('rugby')) return 'rugby';
+  if (cat.includes('cricket')) return 'cricket';
+  if (cat.includes('tennis')) return 'tennis';
+  if (cat.includes('hockey')) return 'hockey';
+  if (cat.includes('baseball')) return 'baseball';
+  if (cat.includes('darts')) return 'darts';
+  if (cat.includes('liveshow') || cat.includes('uncategorized')) return 'other';
   return cat;
 }
 
@@ -230,7 +238,7 @@ async function getAllMatches() {
 
   // 5. Fetch from TimStreams (vixnuvew API)
   try {
-    const tsRes = await axios.get('https://api.vixnuvew.uk/api/live-upcoming', { timeout: 7000 });
+    const tsRes = await axios.get('https://timstreams.st/api/live-upcoming', { timeout: 7000 });
     if (tsRes.data && Array.isArray(tsRes.data.events)) {
       const genres = tsRes.data.genres || {};
       

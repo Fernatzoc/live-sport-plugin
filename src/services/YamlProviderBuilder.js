@@ -89,7 +89,7 @@ class YamlProviderBuilder {
         const fileContents = fs.readFileSync(path.join(yamlDir, file), 'utf8');
         const config = yaml.load(fileContents);
         
-        if (config && config.name && config.baseUrl && config.selectors) {
+        if (config && config.name && config.baseUrl && config.selectors && typeof config.selectors.matches === 'string' && typeof config.selectors.title === 'string' && typeof config.selectors.link === 'string') {
           const providerInstance = new GenericYamlProvider({ circuitBreaker }, config);
           generatedProviders.push(providerInstance);
           console.log(`[YamlProviderBuilder] Successfully loaded YAML provider: ${config.name}`);

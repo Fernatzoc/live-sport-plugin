@@ -1,6 +1,7 @@
 const BaseProvider = require('./BaseProvider');
 const MatchEntity = require('../domain/MatchEntity');
 const StreamEntity = require('../domain/StreamEntity');
+const { parseTimezone } = require('../timezone');
 
 class WatchFootyProvider extends BaseProvider {
   constructor(opts) {
@@ -10,7 +11,7 @@ class WatchFootyProvider extends BaseProvider {
     
     this.fetchMain = this.circuitBreaker.wrap(`${this.name}_fetchMain`, async () => {
       const headers = { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36' };
-      const res = await fetch(this.apiUrl, { headers, signal: AbortSignal.timeout(10000) });
+      const res = await this.proxyFetch(this.apiUrl, { headers, signal: AbortSignal.timeout(10000) });
       if (!res.ok) throw new Error(`HTTP error! status: ${res.status}`);
       return await res.json();
     });
@@ -18,7 +19,7 @@ class WatchFootyProvider extends BaseProvider {
     this.fetchMatchDetails = this.circuitBreaker.wrap(`${this.name}_fetchMatch`, async (matchId) => {
       const url = `https://api.watchfooty.st/api/v1/match/${matchId}`;
       const headers = { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36' };
-      const res = await fetch(url, { headers, signal: AbortSignal.timeout(10000) });
+      const res = await this.proxyFetch(url, { headers, signal: AbortSignal.timeout(10000) });
       if (!res.ok) throw new Error(`HTTP error! status: ${res.status}`);
       return await res.json();
     });
@@ -41,7 +42,7 @@ class WatchFootyProvider extends BaseProvider {
             status = 'finished'; // Or upcoming, but we ignore finished usually
           }
 
-          const matchTime = item.timestamp ? new Date(item.timestamp).getTime() : Date.now();
+          const matchTime = item.timestamp ? parseTimezone(item.timestamp, 'UTC') : Date.now();
           
           // WatchFooty is mostly football
           const category = 'football';
@@ -80,6 +81,16 @@ class WatchFootyProvider extends BaseProvider {
             
             if (isDirect) {
               entityParams.url = s.url;
+              entityParams.behaviorHints = {
+                notWebReady: true,
+                proxyHeaders: {
+                  request: {
+                    "Origin": "https://watchfooty.st",
+                    "Referer": "https://watchfooty.st/",
+                    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/127.0.0.0 Safari/537.36"
+                  }
+                }
+              };
             } else {
               entityParams.externalUrl = `/watch?url=${encodeURIComponent(s.url)}&title=${encodeURIComponent(matchTitle || 'WatchFooty')}`;
             }

@@ -27,7 +27,8 @@ class PpvDomainsProvider extends BaseProvider {
         
         if (Array.isArray(categoryObj.streams)) {
           categoryObj.streams.forEach(s => {
-            const id = s.id.toString();
+            if (s.id === null || s.id === undefined) return;
+            const id = String(s.id);
             // Ppv returns teams in the name usually e.g. "Team A vs. Team B"
             let team1 = null, team2 = null;
             if (s.name && s.name.includes(' vs. ')) {
@@ -37,7 +38,7 @@ class PpvDomainsProvider extends BaseProvider {
             }
 
             matches.push(new MatchEntity({
-              id: id,
+              id: 'ppv_' + id,
               title: s.name,
               category: categoryName,
               date: s.starts_at ? (s.starts_at * 1000).toString() : null,

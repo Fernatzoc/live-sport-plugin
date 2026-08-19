@@ -81,16 +81,21 @@ async function relay(res, url, slot, origin) {
   }
 
   if (isPlaylist(firstChunk)) {
+    const MAX_PLAYLIST_BYTES = 5 * 1024 * 1024
     const chunks = [firstChunk]
+    let total = firstChunk.length
     for await (const chunk of bodyStream) {
+      total += chunk.length
+      if (total > MAX_PLAYLIST_BYTES) {
+        bodyStream.destroy()
+        res.writeHead(502, { ...cors, 'Content-Type': 'text/plain' })
+        res.end('playlist too large')
+        return
+      }
       chunks.push(chunk)
     }
     const raw = Buffer.concat(chunks)
-    res.writeHead(200, {
-      ...cors,
-      'Content-Type': 'application/vnd.apple.mpegurl',
-      'Cache-Control': 'no-cache',
-    })
+    res.writeHead(200, { ...cors, 'Content-Type': 'application/vnd.apple.mpegurl', 'Cache-Control': 'no-cache' })
     res.end(rewrite(raw.toString('utf8'), url, slot, origin))
     return
   }

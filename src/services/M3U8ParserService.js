@@ -49,12 +49,19 @@ class M3U8ParserService {
       if (bitrate) label += (label ? ' @ ' : '') + bitrate;
       if (languages.length > 0) label += ` [${languages.join(', ')}]`;
 
+      let uri = best.uri;
+      try {
+        uri = new URL(best.uri, manifestUrl).href;
+      } catch (e) {
+        // Keep the raw URI if it cannot be resolved
+      }
+
       return {
         resolution,
         bitrate,
         languages,
         label: label || 'Auto',
-        uri: best.uri
+        uri
       };
     } catch (e) {
       console.error('[M3U8Parser] Error parsing manifest:', e.message);

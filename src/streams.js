@@ -42,7 +42,7 @@ async function handleStream(type, id, config) {
   const KNOWN_FALLBACKS = [...registeredJSProviders, 'iptv-org', 'iptv-org'.replace('-', '')];
 
   let activeSources = sortedSources;
-  if (config && config.sources && config.sources !== 'none') {
+  if (config && typeof config.sources === 'string' && config.sources !== 'none') {
     const enabled = config.sources.split(',');
     activeSources = sortedSources.filter(src => {
       if (src.source.startsWith('yaml_')) return true;
@@ -92,6 +92,13 @@ async function handleStream(type, id, config) {
             }
           }
         }];
+      } else if (sourceName.startsWith('yaml_')) {
+        const yamlProviders = container.resolve('yamlProviders');
+        const pName = sourceName.replace('yaml_', '');
+        const provider = yamlProviders.find(p => p.name === pName);
+        if (provider) {
+          resStreams = await provider.resolveStream(src.id, match.category, match.title);
+        }
       } else {
         resStreams = [];
       }
@@ -128,9 +135,6 @@ async function handleStream(type, id, config) {
         // Only add if not already present somehow
         const resolved = await sfProvider.resolveStream(channel.id, 'cricket', channel.title);
         for (const s of resolved) {
-          if (s.url && s.url.startsWith('/api/hls')) {
-            s.url = `${BASE_URL}${s.url}`;
-          }
           s.score = streamScorer.calculateScore(s, 'streamfree');
           s._source = 'streamfree';
           streams.push(s);
@@ -153,7 +157,7 @@ async function handleStream(type, id, config) {
     ntv: 'NTV', sportyhunter: 'SportyHunter', streamsports: 'StreamSports',
     'iptv-org': 'Direct IPTV', 'streamsports99': 'StreamSports99',
     'ppvdomains': 'PPV Domains', 'streamic': 'Streamic', 'strims24': 'Strims24',
-    mlbelmundo: 'MLB El Mundo'
+    mlbelmundo: 'MLB El Mundo', rojadirecta: 'Rojadirecta'
   };
 
   streams.forEach(s => {
@@ -180,7 +184,8 @@ async function handleStream(type, id, config) {
     else if (s.title && s.title.toLowerCase().includes('ppv domains')) providerName = 'PPV Domains';
     else if (s.title && s.title.toLowerCase().includes('streamic')) providerName = 'Streamic';
     else if (s.title && s.title.toLowerCase().includes('strims24')) providerName = 'Strims24';
-    else if (s.title && s.title.toLowerCase().includes('mlbelmundo') || (s.title && s.title.toLowerCase().includes('mlb live stream'))) providerName = 'MLB El Mundo';
+    else if (s.title && (s.title.toLowerCase().includes('mlbelmundo') || s.title.toLowerCase().includes('mlb live stream'))) providerName = 'MLB El Mundo';
+    else if (s.title && s.title.toLowerCase().includes('rojadirecta')) providerName = 'Rojadirecta';
     else if (s.title && s.title.toLowerCase().includes('24/7')) providerName = 'Direct IPTV';
 
     let originalTitle = s.title || '';

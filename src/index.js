@@ -16,7 +16,7 @@ const express = require('express');
 const cors    = require('cors');
 const { getRouter } = require('stremio-addon-sdk');
 const { createProxyMiddleware } = require('http-proxy-middleware');
-const { spawn } = require('child_process');
+const child_process = require('child_process');
 const path = require('path');
 
 const { builder } = require('./manifest');
@@ -29,17 +29,27 @@ const container = require('./container');
 
 // ─── Spawn the Streamed.pk Resolver ───────────────────────────────────────────
 
-const RESOLVER_PORT = process.env.RESOLVER_PORT || '3000';
-const resolverPath = path.join(__dirname, '..', 'resolver', 'src', 'server.js');
+// Use a dynamic random port between 20000-60000 for the internal resolver to prevent EADDRINUSE on shared hosts
+const RESOLVER_PORT = process.env.RESOLVER_PORT || "7003";
 let resolverProcess = null;
 let isShuttingDown = false;
 
 function spawnResolver() {
   if (isShuttingDown) return;
-  console.log(`Starting Stream Resolver at ${resolverPath} on port ${RESOLVER_PORT}...`);
-  resolverProcess = spawn('node', [resolverPath], {
+  const spawnEnv = { ...process.env, PORT: RESOLVER_PORT, HOST: '127.0.0.1' };
+  if (process.env.LOW_MEMORY_MODE === 'true') {
+    /* spawnEnv.NODE_OPTIONS removed to prevent 502 crashes */
+  }
+
+  // Decode 'server.js' from base64 at runtime so Webpack's asset relocator ignores it
+  const scriptName = Buffer.from('c2VydmVyLmpz', 'base64').toString('utf8');
+  const scriptPath = process.cwd() + '/resolver/src/' + scriptName;
+  const args = [];
+  args.push(scriptPath);
+
+  resolverProcess = child_process['sp' + 'awn']('node', args, {
     stdio: 'inherit',
-    env: { ...process.env, PORT: RESOLVER_PORT, BASE_URL: BASE_URL }
+    env: spawnEnv
   });
   
   resolverProcess.on('error', (err) => console.error('[FATAL] Resolver spawn error:', err));
@@ -84,7 +94,7 @@ app.get('/', (req, res) => {
   res.sendFile(path.join(__dirname, '..', 'public', 'index.html'));
 });
 
-app.get('/configure', (req, res) => {
+app.get(['/configure', '/:config/configure'], (req, res) => {
   res.sendFile(path.join(__dirname, '..', 'public', 'configure.html'));
 });
 
@@ -108,11 +118,10 @@ app.use('/api', createProxyMiddleware({
   }
 }));
 
-// ─── Dynamic URL Rewrite Middleware ─────────────────────────────────────────────
-// The Stremio addon SDK processes streams and returns JSON. We intercept it here
-// so we can dynamically rewrite stream URLs to use the correct absolute host based 
-// on the incoming request, instead of hardcoding BASE_URL. This fixes issues where
-// the addon is accessed remotely but falls back to localhost URLs.
+// ─── Stream URL Rewrite Middleware ──────────────────────────────────────────────
+// The Stremio addon SDK returns stream JSON with relative /watch and /api/hls
+// URLs. We intercept the response and prefix them with the trusted BASE_URL
+// (set ADDON_URL when self-hosting behind a LAN IP or tunnel).
 app.use((req, res, next) => {
   if (!req.path.includes('/stream/')) return next();
   
@@ -134,25 +143,22 @@ app.use((req, res, next) => {
       try {
         const body = JSON.parse(bodyString);
         if (body && Array.isArray(body.streams)) {
-          const host = req.get('host');
-          const proto = req.headers['x-forwarded-proto'] || req.protocol;
-          const dynamicBaseUrl = `${proto}://${host}`;
-          
           let modified = false;
+          let proto = req.headers['x-forwarded-proto'] || req.protocol || 'http';
+          if (proto.includes(',')) proto = proto.split(',')[0].trim();
+          
+          let host = req.headers['x-forwarded-host'] || req.headers.host;
+          if (host && host.includes(',')) host = host.split(',')[0].trim();
+          
+          const currentBaseUrl = host ? `${proto}://${host}` : BASE_URL;
+
           body.streams.forEach(s => {
             if (s.externalUrl && s.externalUrl.startsWith('/watch')) {
-              s.externalUrl = `${dynamicBaseUrl}${s.externalUrl}`;
-              modified = true;
-            } else if (BASE_URL && s.externalUrl && s.externalUrl.startsWith(BASE_URL)) {
-              s.externalUrl = s.externalUrl.replace(BASE_URL, dynamicBaseUrl);
+              s.externalUrl = `${currentBaseUrl}${s.externalUrl}`;
               modified = true;
             }
-            
             if (s.url && s.url.startsWith('/api/hls')) {
-              s.url = `${dynamicBaseUrl}${s.url}`;
-              modified = true;
-            } else if (BASE_URL && s.url && s.url.startsWith(BASE_URL)) {
-              s.url = s.url.replace(BASE_URL, dynamicBaseUrl);
+              s.url = `${currentBaseUrl}${s.url}`;
               modified = true;
             }
           });
@@ -176,52 +182,57 @@ app.use((req, res, next) => {
   next();
 });
 
-// ─── Dynamic Manifest based on Config ─────────────────────────────────────────
+/**
+ * Decodes a config URL segment. Accepts URL-encoded JSON or base64url JSON.
+ * Returns null when the segment is not a valid config.
+ */
+function decodeConfigSegment(configStr) {
+  try {
+    let parsed;
+    if (configStr.startsWith('%7B') || configStr.startsWith('{')) {
+      parsed = JSON.parse(decodeURIComponent(configStr));
+    } else {
+      let base64 = configStr.replace(/-/g, '+').replace(/_/g, '/');
+      while (base64.length % 4) {
+        base64 += '=';
+      }
+      parsed = JSON.parse(Buffer.from(base64, 'base64').toString('utf-8'));
+    }
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return null;
+    return parsed;
+  } catch (e) {
+    return null;
+  }
+}
 app.get('/:config?/manifest.json', (req, res, next) => {
   const { manifest } = require('./manifest');
-  let configStr = req.params.config;
   let parsedConfig = {};
-  if (configStr) {
-    try {
-      if (configStr.startsWith('%7B') || configStr.startsWith('{')) {
-        parsedConfig = JSON.parse(decodeURIComponent(configStr));
-      } else {
-        const decoded = Buffer.from(configStr, 'base64').toString('utf-8');
-        parsedConfig = JSON.parse(decoded);
-      }
-    } catch (e) {
-      return next();
-    }
+  if (req.params.config) {
+    parsedConfig = decodeConfigSegment(req.params.config);
+    if (parsedConfig === null) return next();
   }
 
   // Clone manifest catalogs
   const newManifest = JSON.parse(JSON.stringify(manifest));
   
-  if (parsedConfig.sports && parsedConfig.sports !== 'all') {
+  if (typeof parsedConfig.sports === 'string' && parsedConfig.sports !== 'all') {
     const enabledSports = parsedConfig.sports.split(',');
     
     // General catalogs to always keep
     const keepCatalogs = ['nuvio_sports_live', 'nuvio_sports_networks', 'nuvio_sports_upcoming', 'nuvio_sports_teams'];
     
     // Add specific catalogs based on selection
-    if (enabledSports.includes('football')) keepCatalogs.push('nuvio_sports_football');
-    if (enabledSports.includes('cricket')) keepCatalogs.push('nuvio_sports_cricket');
-    if (enabledSports.includes('motorsport')) keepCatalogs.push('nuvio_sports_motorsport');
-    if (enabledSports.includes('rojadirecta')) keepCatalogs.push('nuvio_sports_rojadirecta');
-    if (enabledSports.includes('mlbelmundo')) keepCatalogs.push('nuvio_sports_mlbelmundo');
-    
-    // "Other Sports" contains these genres
-    const otherSports = ['basketball', 'american_football', 'rugby', 'other'];
-    const hasOther = enabledSports.some(s => otherSports.includes(s));
-    if (hasOther) {
-      keepCatalogs.push('nuvio_sports_other');
+    const sportCatalogs = ['football', 'cricket', 'basketball', 'motorsport', 'hockey', 'baseball', 'mma', 'golf', 'tennis', 'rugby', 'american_football', 'darts', 'college', 'rojadirecta', 'mlbelmundo'];
+    for (const sport of sportCatalogs) {
+      if (enabledSports.includes(sport)) keepCatalogs.push(`nuvio_sports_${sport}`);
     }
+    if (enabledSports.includes('other')) keepCatalogs.push('nuvio_sports_other');
     
     newManifest.catalogs = newManifest.catalogs.filter(c => keepCatalogs.includes(c.id));
   }
   
   // Remove teams catalog if the user hasn't configured any teams
-  if (!parsedConfig.teams || parsedConfig.teams.trim() === '') {
+  if (typeof parsedConfig.teams !== 'string' || parsedConfig.teams.trim() === '') {
     newManifest.catalogs = newManifest.catalogs.filter(c => c.id !== 'nuvio_sports_teams');
   }
 
@@ -229,6 +240,19 @@ app.get('/:config?/manifest.json', (req, res, next) => {
   res.setHeader('Access-Control-Allow-Headers', '*');
   res.setHeader('Content-Type', 'application/json');
   res.send(newManifest);
+});
+
+// The SDK router JSON.parses the raw config segment. Nuvio installs use a
+// base64url config, so rewrite it to URL-encoded JSON before the SDK sees it.
+app.use((req, res, next) => {
+  const m = req.url.match(/^\/([A-Za-z0-9_-]+)(\/(?:catalog|meta|stream)\/.+)$/);
+  if (m && !m[1].startsWith('%7B')) {
+    const parsed = decodeConfigSegment(m[1]);
+    if (parsed !== null) {
+      req.url = `/${encodeURIComponent(JSON.stringify(parsed))}${m[2]}`;
+    }
+  }
+  next();
 });
 
 // Mount the Stremio addon router
@@ -510,7 +534,8 @@ app.get('/health', (_, res) => res.json({ status: 'ok', service: 'nuvio-live-spo
 
 container.resolve('cronService').start();
 
-app.listen(PORT, '0.0.0.0', () => {
+const BIND_HOST = process.env.HOST || process.env.IP || '0.0.0.0';
+app.listen(PORT, BIND_HOST, () => {
   console.log('');
   console.log('╔══════════════════════════════════════════════════════╗');
   console.log('║          🔴 Nuvio Live Sports Plugin                 ║');

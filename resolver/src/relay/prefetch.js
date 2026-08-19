@@ -19,25 +19,31 @@ export function getNextSegment(url) {
 
 export function prefetchSegment(url, slot) {
   if (cache.has(url)) return
-  
-  const promise = pullStream(url, slot).catch((err) => {
+
+  const controller = new AbortController()
+  const promise = pullStream(url, slot, controller.signal).catch((err) => {
     cache.delete(url)
     throw err
   })
 
-  cache.set(url, promise)
-  
+  cache.set(url, { promise, controller })
+
   if (cache.size > 5) {
     const firstKey = cache.keys().next().value
+    const entry = cache.get(firstKey)
     cache.delete(firstKey)
+    if (entry) {
+      entry.promise.catch(() => {})
+      entry.controller.abort()
+    }
   }
 }
 
 export function getPrefetched(url) {
-  const promise = cache.get(url)
-  if (promise) {
+  const entry = cache.get(url)
+  if (entry) {
     cache.delete(url)
-    return promise
+    return entry.promise
   }
   return null
 }

@@ -34,7 +34,7 @@ describe('StreamFreeProvider', () => {
     const matches = await provider.getMatches();
     
     expect(matches).toHaveLength(1);
-    expect(matches[0].id).toBe('man_utd_vs_arsenal');
+    expect(matches[0].id).toBe('sf_man_utd_vs_arsenal');
     expect(matches[0].title).toBe('Manchester United vs Arsenal');
     expect(matches[0].category).toBe('football');
     expect(matches[0].popular).toBe('1'); // Because viewers > 100

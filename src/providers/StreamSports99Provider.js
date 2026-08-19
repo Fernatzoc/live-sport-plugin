@@ -1,6 +1,7 @@
 const BaseProvider = require('./BaseProvider');
 const MatchEntity = require('../domain/MatchEntity');
 const StreamEntity = require('../domain/StreamEntity');
+const { parseTimezone } = require('../timezone');
 
 class StreamSports99Provider extends BaseProvider {
   constructor(opts) {
@@ -31,10 +32,13 @@ class StreamSports99Provider extends BaseProvider {
       'ufc': 'mma',
       'mma': 'mma',
       'boxing': 'mma',
+      'wwe': 'mma',
       'tennis': 'tennis',
       'golf': 'golf',
       'rugby': 'rugby',
-      'darts': 'darts'
+      'darts': 'darts',
+      'ncaa': 'college',
+      'ncaaw': 'college'
     };
     return map[lower] || 'other';
   }
@@ -75,6 +79,9 @@ class StreamSports99Provider extends BaseProvider {
               date: matchTime.toString(),
               popular: status === 'live' ? '1' : '0',
               league: item.tournament || key,
+              team1: { name: item.homeTeam, logo: item.homeTeamIMG },
+              team2: { name: item.awayTeam, logo: item.awayTeamIMG },
+              thumbnail_url: item.homeTeamIMG || item.awayTeamIMG || '', // Use home team as primary thumbnail
               sources: [{ source: 'streamsports99', id: matchId }]
             }));
           }
@@ -113,16 +120,19 @@ class StreamSports99Provider extends BaseProvider {
       }
 
       if (item && item.channels && Array.isArray(item.channels)) {
+
+
         for (const [idx, ch] of item.channels.entries()) {
           if (ch.url) {
+
+            // --- INTERNAL FALLBACK ---
             try {
-              // Fetch the player HTML to extract the actual m3u8
               const playerRes = await fetch(ch.url, {
                 headers: {
                   'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
                   'Referer': 'https://streamsports99.fun/'
                 },
-                signal: AbortSignal.timeout(5000)
+                signal: AbortSignal.timeout(10000)
               });
               
               if (playerRes.ok) {
@@ -152,16 +162,23 @@ class StreamSports99Provider extends BaseProvider {
                     }
                     
                     if (m3u8Url) {
-                      const embedPath = `streamsports99/${sourceId || 'match'}/stream${idx+1}`;
-                      const embedOrigin = 'https://streamsports99.fun';
-                      const proxiedUrl = `/api/hls/playlist.m3u8?url=${encodeURIComponent(m3u8Url)}&referer=${encodeURIComponent('https://streamsports99.fun/')}&embed=${encodeURIComponent(embedPath)}&embedOrigin=${encodeURIComponent(embedOrigin)}`;
                       streams.push(new StreamEntity({
                         name: `StreamSports99`,
                         title: ch.channel_name || `VIP Stream ${idx + 1}`,
-                        url: proxiedUrl,
+                        url: m3u8Url,
+                        behaviorHints: {
+                          notWebReady: true,
+                          proxyHeaders: {
+                            request: {
+                              "Origin": "https://streamsports99.fun",
+                              "Referer": "https://streamsports99.fun/",
+                              "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/127.0.0.0 Safari/537.36"
+                            }
+                          }
+                        },
                         resolution: 'HD'
                       }));
-                      continue; // move to next channel
+                      continue;
                     }
                   }
                 }

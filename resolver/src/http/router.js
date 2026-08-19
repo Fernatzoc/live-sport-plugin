@@ -7,9 +7,20 @@ function json(res, status, body) {
   res.end(JSON.stringify(body))
 }
 
+const MAX_BODY_BYTES = 1024 * 1024
+
 async function readJson(req) {
   const chunks = []
-  for await (const chunk of req) chunks.push(chunk)
+  let size = 0
+  for await (const chunk of req) {
+    size += chunk.length
+    if (size > MAX_BODY_BYTES) {
+      const err = new Error('request body too large')
+      err.tooLarge = true
+      throw err
+    }
+    chunks.push(chunk)
+  }
   return JSON.parse(Buffer.concat(chunks).toString())
 }
 
@@ -46,8 +57,12 @@ export async function route(req, res) {
       let body
       try {
         body = await readJson(req)
-      } catch {
-        json(res, 400, { ok: false, error: 'invalid json' })
+      } catch (err) {
+        if (err.tooLarge) {
+          json(res, 413, { ok: false, error: 'request body too large' })
+        } else {
+          json(res, 400, { ok: false, error: 'invalid json' })
+        }
         return
       }
       json(res, 200, await run(body, origin))

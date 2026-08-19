@@ -6,11 +6,11 @@ class CacheService {
   }
 
   getMatches() {
-    return this.cachedMatches;
+    return this.cachedMatches.map((m) => ({ ...m, sources: [...(m.sources || [])] }));
   }
 
   setMatches(matches) {
-    this.cachedMatches = matches;
+    this.cachedMatches = (matches || []).map((m) => ({ ...m, sources: [...(m.sources || [])] }));
     this.lastFetchTime = Date.now();
   }
 

@@ -1,22 +1,20 @@
-# Use a lightweight Node.js image
-FROM node:22-slim
+FROM node:22-alpine
 
-# Create and set the working directory
-WORKDIR /usr/src/app
+WORKDIR /app
 
-# Copy package files
+# Copy package files and install all dependencies
 COPY package*.json ./
+RUN npm install
 
-# Install dependencies
-# We use npm install instead of ci to be safe if package-lock is out of sync
-RUN npm install --production
-
-# Copy the rest of the application source code
+# Copy the rest of the application code
 COPY . .
 
-# Hugging Face Spaces strictly requires apps to run on port 7860
-ENV PORT=7860
-EXPOSE 7860
+# Build the bundled output in dist/
+RUN npm run build
 
-# Start the web server
-CMD [ "npm", "start" ]
+# Set default port
+ENV PORT=7000
+EXPOSE 7000
+
+# Start the application
+CMD ["npm", "start"]

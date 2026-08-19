@@ -50,6 +50,15 @@ class IptvOrgProvider extends BaseProvider {
 
         const cInfo = channelMap.get(s.channel);
         
+        let logoUrl = cInfo.logo || '';
+        if (!logoUrl && cInfo.website) {
+          try {
+            const hostname = new URL(cInfo.website).hostname.replace('www.', '');
+            // Using clearbit for high-res logos, falls back to Google favicons if clearbit fails
+            logoUrl = `https://logo.clearbit.com/${hostname}`;
+          } catch(e) {}
+        }
+        
         if (!activeChannels.has(s.channel)) {
           activeChannels.set(s.channel, new MatchEntity({
             id: `iptv_${s.channel}`,
@@ -58,7 +67,7 @@ class IptvOrgProvider extends BaseProvider {
             date: '0', // 24/7 channel
             popular: cInfo.country === 'US' || cInfo.country === 'UK' ? '1' : '0', // Boost English networks
             league: `Live TV (${cInfo.country})`,
-            thumbnail_url: cInfo.logo,
+            thumbnail_url: logoUrl,
             sources: []
           }));
         }

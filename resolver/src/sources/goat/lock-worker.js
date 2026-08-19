@@ -148,9 +148,11 @@ async function crack(slot, goat, bodyHex) {
   const fetchFn = mockFetch(NativeResponse, goat, body, (url) => {
     m3u8 = url
   })
+  const origFetch = globalThis.fetch
   globalThis.fetch = fetchFn
 
   const origInstantiate = WebAssembly.instantiate.bind(WebAssembly)
+  const origInstantiateStreaming = WebAssembly.instantiateStreaming
 
   WebAssembly.instantiate = async (source, imports) => {
     patchImports(imports, NativeResponse, goat, body, (url) => {
@@ -163,23 +165,35 @@ async function crack(slot, goat, bodyHex) {
   }
   WebAssembly.instantiateStreaming = async (_resp, imports) => WebAssembly.instantiate(wasmBytes, imports)
 
-  const mod = await import(lockModuleUrl)
-  const api = await mod.default({
-    module_or_path: `${embedOrigin}/js/wasm/lock.wasm`,
-    fetch: fetchFn,
-  })
-  await api.init_wasm?.()
-
-  WebAssembly.instantiate = origInstantiate
-  delete WebAssembly.instantiateStreaming
+  const restoreWasm = () => {
+    WebAssembly.instantiate = origInstantiate
+    if (origInstantiateStreaming !== undefined) {
+      WebAssembly.instantiateStreaming = origInstantiateStreaming
+    } else {
+      delete WebAssembly.instantiateStreaming
+    }
+  }
 
   try {
-    await api.set_stream_jw(slot.source, slot.id, slot.stream)
-  } catch (err) {
-    if (!m3u8) throw err
+    const mod = await import(lockModuleUrl)
+    const api = await mod.default({
+      module_or_path: `${embedOrigin}/js/wasm/lock.wasm`,
+      fetch: fetchFn,
+    })
+    await api.init_wasm?.()
+    restoreWasm()
+
+    try {
+      await api.set_stream_jw(slot.source, slot.id, slot.stream)
+    } catch (err) {
+      if (!m3u8) throw err
+    }
+    if (!m3u8) throw new Error('lock did not yield m3u8')
+    return m3u8
+  } finally {
+    restoreWasm()
+    globalThis.fetch = origFetch
   }
-  if (!m3u8) throw new Error('lock did not yield m3u8')
-  return m3u8
 }
 
 const { slot, goat, bodyHex } = workerData

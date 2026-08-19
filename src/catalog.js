@@ -20,7 +20,8 @@ function mapMatchToMetaPreview(match, config = {}) {
     golf: '22c55e', // emerald
     darts: 'eab308', // yellow
     mma: 'dc2626', // crimson red
-    networks: '64748b' // slate
+    networks: '64748b', // slate
+    college: 'd946ef' // fuchsia
   };
   const color = categoryColors[match.category] || '333333';
   
@@ -62,24 +63,45 @@ function mapMatchToMetaPreview(match, config = {}) {
     return null;
   }
 
-  const fallbackPoster = `https://placehold.co/800x450/111111/${color}.png?text=${safeTitle}&font=Montserrat`;
+  // Generate a clean, readable fallback poster using the match title
+  let posterText = match.title;
+  if (match.team1 && match.team2 && match.team1.name && match.team2.name) {
+      posterText = `${match.team1.name}\nvs\n${match.team2.name}`;
+  } else {
+      posterText = posterText.replace(/ vs /i, '\nvs\n').replace(/ - /i, '\n-\n');
+  }
+  
+  if (posterText.length > 50) {
+      posterText = match.category.toUpperCase();
+  }
+  
+  const fallbackPoster = `https://placehold.co/800x450/111111/${color}.png?text=${encodeURIComponent(posterText)}&font=Montserrat`;
   
   let poster = fallbackPoster;
   let logo = match.team1 && match.team1.logo ? match.team1.logo : null;
 
+  // Helper to construct a standardized proxy URL for all images
+  // Uses JPEG with 80% quality to ensure sizes stay well under Stremio's 100kb limit
+  const getProxyUrl = (url, isLogo) => {
+    const fit = isLogo ? 'contain' : 'cover';
+    const bg = isLogo ? '&bg=1a1a1a' : '';
+    return `https://wsrv.nl/?url=${encodeURIComponent(url)}&w=800&h=450&fit=${fit}${bg}&output=jpeg&q=80`;
+  };
+
   // Enhance channel posters with logos
   const channelLogo = getChannelLogo(match.title);
   if (channelLogo) {
-    poster = `https://wsrv.nl/?url=${channelLogo}&w=800&h=450&fit=contain&bg=111111`;
+    poster = getProxyUrl(channelLogo, true);
     logo = channelLogo;
   } else if (match.thumbnail_url) {
     const tUrl = match.thumbnail_url.startsWith('http') ? match.thumbnail_url : `https://streamfree.top${match.thumbnail_url}`;
-    // If we have a thumbnail URL but it's likely a transparent logo (like from iptv-org), wrap it in wsrv to make it a beautiful landscape poster
-    if (match.category === 'networks' || tUrl.includes('logo')) {
-        poster = `https://wsrv.nl/?url=${encodeURIComponent(tUrl)}&w=800&h=450&fit=contain&bg=111111`;
-        logo = tUrl;
-    } else {
-        poster = tUrl;
+    // Determine if the URL is likely a logo that needs containment and a background
+    const isLogo = match.category === 'networks' || tUrl.toLowerCase().includes('logo') || tUrl.toLowerCase().includes('icon');
+    
+    poster = getProxyUrl(tUrl, isLogo);
+    
+    if (isLogo) {
+      logo = tUrl;
     }
   }
 
@@ -87,14 +109,17 @@ function mapMatchToMetaPreview(match, config = {}) {
 
   let timeString = '24/7 Stream';
   let relativeTimeStr = '';
+  let releasedIso = null;
   
   if (match.date && !isNaN(parseInt(match.date)) && parseInt(match.date) > 0) {
      const dateObj = new Date(parseInt(match.date));
+     releasedIso = dateObj.toISOString();
      const options = { hour: '2-digit', minute: '2-digit' };
-     if (config && config.timezone) {
-       options.timeZone = config.timezone;
-     }
-     timeString = dateObj.toLocaleTimeString('en-US', options);
+     
+     // Default to UTC if not specified by client, instead of server local time
+     options.timeZone = (config && config.timezone) ? config.timezone : 'UTC';
+     
+     timeString = dateObj.toLocaleTimeString('en-US', options) + (options.timeZone === 'UTC' ? ' UTC' : '');
      
      const now = Date.now();
      const diff = dateObj.getTime() - now;
@@ -116,10 +141,10 @@ function mapMatchToMetaPreview(match, config = {}) {
   if (match.team1 && match.team1.name) cast.push(match.team1.name);
   if (match.team2 && match.team2.name) cast.push(match.team2.name);
 
-  const leagueStr = match.league ? `🏆 **League:** ${match.league}\n` : '';
-  const desc = `${leagueStr}📅 **Category:** ${match.category.toUpperCase()}\n⏰ **Status:** ${timeString === '24/7 Stream' ? '24/7 Live Network' : 'Kickoff at ' + timeString + relativeTimeStr}`;
+  const leagueStr = match.league ? `🏆 League: ${match.league}\n` : '';
+  const desc = `${leagueStr}📅 Category: ${match.category.toUpperCase()}\n⏰ Status: ${timeString === '24/7 Stream' ? '24/7 Live Network' : 'Kickoff at ' + timeString + relativeTimeStr}`;
 
-  return {
+  const metaPreview = {
     id: `nuvio_sport_${match.id}`,
     type: 'tv',
     name: `${prefix}${match.title}`,
@@ -135,6 +160,12 @@ function mapMatchToMetaPreview(match, config = {}) {
       defaultVideoId: `nuvio_sport_${match.id}`
     }
   };
+
+  if (releasedIso) {
+    metaPreview.released = releasedIso;
+  }
+
+  return metaPreview;
 }
 
 // ─── Handlers ─────────────────────────────────────────────────────────────────
@@ -152,20 +183,6 @@ async function handleCatalog(type, id, extra, config) {
   const cacheService = container.resolve('cacheService');
   const matches = cacheService.getMatches();
   
-  let filteredMatches = matches;
-  
-  if (conf.sports && conf.sports !== 'all') {
-    const allowedSports = conf.sports.toLowerCase().split(',').map(s => s.trim()).filter(Boolean);
-    // Don't filter out networks (24/7 TV) since they aren't tied to a specific sport
-    filteredMatches = filteredMatches.filter(m => 
-      m.category === 'networks' || 
-      allowedSports.includes(m.category) || 
-      allowedSports.includes('other') ||
-      (allowedSports.includes('mlbelmundo') && (m.id.startsWith('mlbelmundo_') || m.category === 'baseball')) ||
-      (allowedSports.includes('rojadirecta') && m.id.startsWith('rojadirecta_'))
-    );
-  }
-  
   if (categoryMatch === 'live') {
     filteredMatches = matches.filter(m => m.popular === '1');
   } else if (categoryMatch === 'upcoming') {
@@ -175,7 +192,7 @@ async function handleCatalog(type, id, extra, config) {
       return m.popular === '0' && kickoff > now;
     });
   } else if (categoryMatch === 'teams') {
-    if (conf.teams) {
+    if (typeof conf.teams === 'string' && conf.teams.trim()) {
       const favoriteTeams = conf.teams.toLowerCase().split(',').map(t => t.trim()).filter(Boolean);
       filteredMatches = matches.filter(m => {
         const titleWords = m.title.toLowerCase();
@@ -185,7 +202,7 @@ async function handleCatalog(type, id, extra, config) {
       filteredMatches = []; // If no config, return empty
     }
   } else if (categoryMatch === 'other') {
-    const topLevelCats = ['football', 'cricket', 'motorsport', 'networks'];
+    const topLevelCats = ['football', 'cricket', 'basketball', 'motorsport', 'hockey', 'baseball', 'mma', 'golf', 'tennis', 'rugby', 'american_football', 'darts', 'networks', 'college', 'rojadirecta', 'mlbelmundo'];
     filteredMatches = matches.filter(m => !topLevelCats.includes(m.category));
     
     if (extra && extra.genre) {
@@ -203,6 +220,18 @@ async function handleCatalog(type, id, extra, config) {
     filteredMatches = matches.filter(m => m.id.startsWith('mlbelmundo_') || m.sources.some(s => s.source === 'mlbelmundo'));
   } else if (categoryMatch !== 'catalog') {
     filteredMatches = matches.filter(m => m.category === categoryMatch);
+  }
+
+  if (typeof conf.sports === 'string' && conf.sports !== 'all') {
+    const allowedSports = conf.sports.toLowerCase().split(',').map(s => s.trim()).filter(Boolean);
+    // Don't filter out networks (24/7 TV) since they aren't tied to a specific sport
+    filteredMatches = filteredMatches.filter(m => 
+      m.category === 'networks' || 
+      allowedSports.includes(m.category) ||
+      allowedSports.includes('other') ||
+      (allowedSports.includes('mlbelmundo') && (m.id.startsWith('mlbelmundo_') || m.category === 'baseball')) ||
+      (allowedSports.includes('rojadirecta') && m.id.startsWith('rojadirecta_'))
+    );
   }
 
   filteredMatches = [...filteredMatches].sort((a, b) => {

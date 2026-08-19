@@ -1,11 +1,12 @@
 {
   "name": "nuvio-live-sports-plugin",
-  "version": "1.0.0",
-  "description": "Live sports streaming add-on for Nuvio/Stremio powered by Streamed.pk",
+  "version": "3.0.0",
+  "description": "The ultimate live sports streaming add-on for Nuvio/Stremio. Scrapes multiple high-speed providers with a zero-lag proxy.",
   "main": "src/index.js",
   "scripts": {
-    "start": "node src/index.js",
+    "start": "node dist/index.js",
     "dev": "node --watch src/index.js",
+    "build": "npx @vercel/ncc build src/index.js -o dist --minify",
     "test": "jest",
     "generate:provider": "node scripts/generate-provider.js",
     "check-sources": "node scripts/check-sources.js"
@@ -26,7 +27,7 @@
     "node-cron": "^4.6.0",
     "node-fetch": "^2.7.0",
     "opossum": "^10.0.0",
-    "puppeteer": "^25.4.0",
+    "playwright": "^1.62.1",
     "stremio-addon-sdk": "^1.6.10"
   },
   "engines": {

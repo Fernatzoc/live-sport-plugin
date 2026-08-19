@@ -1,0 +1,33 @@
+name: Auto Deploy to Linux Server
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Deploy via SSH
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.SERVER_HOST }}
+          username: ${{ secrets.SERVER_USER }}
+          key: ${{ secrets.SERVER_SSH_KEY }}
+          port: 22
+          script: |
+            # 1. Navigate to the deployment folder
+            # IMPORTANT: Update this path once he gives it to you!
+            cd /PATH_GOES_HERE
+            
+            # 2. Pull the latest code
+            git fetch origin
+            git reset --hard origin/main
+            
+            # 3. Install new dependencies
+            npm install
+            
+            # 4. Restart the app with PM2 and memory limit (4GB)
+            # This checks if the app is already running. If yes, it restarts it. If no, it starts it.
+            pm2 restart nuvio-sports --update-env || pm2 start src/index.js --name nuvio-sports --max-memory-restart 4G

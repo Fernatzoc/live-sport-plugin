@@ -39,7 +39,7 @@ class StreamicProvider extends BaseProvider {
         }
 
         matches.push(new MatchEntity({
-          id: id,
+          id: 'streamic_' + id,
           title: s.title,
           category: categoryName,
           date: s.startTime ? (s.startTime * 1000).toString() : null,
@@ -66,10 +66,17 @@ class StreamicProvider extends BaseProvider {
         if (Array.isArray(embedGroup.embeds)) {
           embedGroup.embeds.forEach((e, idx) => {
             if (e.embed) {
+              let streamUrl = e.embed;
+              
+              // Some API results return half a URL like `https://streami.fit/live/?channel_id=`
+              if (streamUrl.endsWith('=')) {
+                streamUrl += sourceId;
+              }
+              
               streams.push(new StreamEntity({
                 name: 'Streamic',
                 title: `${lang} ${e.label ? '(' + e.label + ')' : ''}`,
-                externalUrl: e.embed
+                externalUrl: streamUrl
               }));
             }
           });
