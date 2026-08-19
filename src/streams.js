@@ -229,14 +229,21 @@ async function handleStream(type, id, config) {
       else if (providerName === 'PPV Domains' || providerName === 'BinTV') referer = 'https://ppv.st/';
       else if (providerName === 'StreamSports99' || providerName === 'StreamSports') referer = 'https://cdnlivetv.is/';
       else if (providerName === 'SportyHunter') referer = 'https://sportyhunter.xyz/';
+      else if (providerName === 'MLB El Mundo') referer = 'https://streame.center/';
+      else if (providerName === 'Rojadirecta') referer = 'http://www.rojadirecta.eu/';
       
-      if (referer) {
+      if (!s.behaviorHints.proxyHeaders && referer) {
         s.behaviorHints.proxyHeaders = {
           request: {
             "Referer": referer,
-            "Origin": referer
+            "Origin": referer.endsWith('/') ? referer.slice(0, -1) : referer,
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/127.0.0.0 Safari/537.36"
           }
         };
+      } else if (s.behaviorHints.proxyHeaders && s.behaviorHints.proxyHeaders.request) {
+        if (!s.behaviorHints.proxyHeaders.request['User-Agent']) {
+          s.behaviorHints.proxyHeaders.request['User-Agent'] = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/127.0.0.0 Safari/537.36";
+        }
       }
     }
     

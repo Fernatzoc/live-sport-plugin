@@ -105,8 +105,45 @@ describe('MlbElMundoProvider', () => {
 
     expect(streams).toHaveLength(2);
     expect(streams[0].name).toBe('Nuvio Direct');
-    expect(streams[0].url).toContain('/api/hls?url=https%3A%2F%2Fedgestream1.pro%2Fhls%2Fch15.m3u8');
+    expect(streams[0].url).toBe('https://edgestream1.pro/hls/ch15.m3u8?st=token');
+    expect(streams[0].behaviorHints.notWebReady).toBe(true);
+    expect(streams[0].behaviorHints.proxyHeaders.request['Referer']).toBe('https://streame.center/');
+    expect(streams[0].behaviorHints.proxyHeaders.request['Origin']).toBe('https://streame.center');
+    expect(streams[0].behaviorHints.proxyHeaders.request['User-Agent']).toBeDefined();
     expect(streams[1].name).toBe('Nuvio Web Player');
     expect(streams[1].externalUrl).toBeDefined();
+  });
+});
+
+const RojadirectaProvider = require('../src/providers/RojadirectaProvider');
+
+describe('RojadirectaProvider', () => {
+  let provider;
+
+  beforeEach(() => {
+    nock.cleanAll();
+    const circuitBreaker = new CircuitBreakerService();
+    provider = new RojadirectaProvider({ circuitBreaker });
+  });
+
+  test('resolveStream() returns direct m3u8 stream with notWebReady and proxyHeaders', async () => {
+    provider.streamsMap.set('match_1', [
+      {
+        providerName: 'StreamHD',
+        lang: 'es',
+        type: 'HTTP',
+        kbps: '1200',
+        href: 'https://cdn.example.com/live/stream.m3u8'
+      }
+    ]);
+
+    const streams = await provider.resolveStream('match_1', 'football', 'Real Madrid vs Barcelona');
+    expect(streams).toHaveLength(1);
+    expect(streams[0].name).toBe('Nuvio Direct');
+    expect(streams[0].url).toBe('https://cdn.example.com/live/stream.m3u8');
+    expect(streams[0].behaviorHints.notWebReady).toBe(true);
+    expect(streams[0].behaviorHints.proxyHeaders.request['Referer']).toBe('http://www.rojadirecta.eu/');
+    expect(streams[0].behaviorHints.proxyHeaders.request['Origin']).toBe('http://www.rojadirecta.eu');
+    expect(streams[0].behaviorHints.proxyHeaders.request['User-Agent']).toBeDefined();
   });
 });

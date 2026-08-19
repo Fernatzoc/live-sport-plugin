@@ -165,18 +165,27 @@ class MlbElMundoProvider extends BaseProvider {
       const extracted = await this.extractDirectM3u8(watchUrl);
 
       if (extracted && extracted.m3u8) {
-        const localProxyUrl = `/api/hls?url=${encodeURIComponent(extracted.m3u8)}&referer=${encodeURIComponent('https://streame.center/')}&embedOrigin=${encodeURIComponent('https://streame.center')}`;
-
         streams.push(new StreamEntity({
           name: 'Nuvio Direct',
           title: `MLB Live Stream ⚡`,
-          url: localProxyUrl
+          url: extracted.m3u8,
+          behaviorHints: {
+            notWebReady: true,
+            proxyHeaders: {
+              request: {
+                "Origin": "https://streame.center",
+                "Referer": "https://streame.center/",
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/127.0.0.0 Safari/537.36"
+              }
+            }
+          },
+          resolution: 'HD'
         }));
 
         streams.push(new StreamEntity({
           name: 'Nuvio Web Player',
           title: `MLB Live Stream 🖥️`,
-          externalUrl: `${BASE_URL}/watch?url=${encodeURIComponent(extracted.playerUrl || watchUrl)}&title=${encodeURIComponent(matchTitle || 'MLB Live Game')}`
+          externalUrl: `/watch?url=${encodeURIComponent(extracted.playerUrl || watchUrl)}&title=${encodeURIComponent(matchTitle || 'MLB Live Game')}`
         }));
 
         return streams;

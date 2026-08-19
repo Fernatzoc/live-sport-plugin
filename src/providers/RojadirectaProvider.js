@@ -502,7 +502,18 @@ class RojadirectaProvider extends BaseProvider {
           new StreamEntity({
             name: 'Nuvio Direct',
             title: title,
-            url: s.href
+            url: s.href,
+            behaviorHints: {
+              notWebReady: true,
+              proxyHeaders: {
+                request: {
+                  "Origin": "http://www.rojadirecta.eu",
+                  "Referer": "http://www.rojadirecta.eu/",
+                  "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/127.0.0.0 Safari/537.36"
+                }
+              }
+            },
+            resolution: 'HD'
           })
         ];
       }
@@ -518,20 +529,35 @@ class RojadirectaProvider extends BaseProvider {
       try {
         const resolved = await this.findIframeStream(cleanUrl, 'http://www.rojadirecta.eu/', 0, state);
         if (resolved && resolved.url) {
-          const localProxyUrl = `/api/hls?url=${encodeURIComponent(resolved.url)}&referer=${encodeURIComponent(resolved.referer)}&embed=rojadirecta/${encodeURIComponent(sourceId)}/1&embedOrigin=${encodeURIComponent(resolved.origin)}`;
-
           const fallbackUrl = state.playerUrl || state.deepestUrl || cleanUrl || s.href;
+
+          const ref = resolved.referer || 'http://www.rojadirecta.eu/';
+          let orig = resolved.origin;
+          if (!orig && ref) {
+            try { orig = new URL(ref).origin; } catch (e) { orig = 'http://www.rojadirecta.eu'; }
+          }
 
           return [
             new StreamEntity({
               name: 'Nuvio Direct',
               title: title + ' ⚡',
-              url: localProxyUrl
+              url: resolved.url,
+              behaviorHints: {
+                notWebReady: true,
+                proxyHeaders: {
+                  request: {
+                    "Origin": orig || "http://www.rojadirecta.eu",
+                    "Referer": ref,
+                    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/127.0.0.0 Safari/537.36"
+                  }
+                }
+              },
+              resolution: 'HD'
             }),
             new StreamEntity({
               name: 'Nuvio Web Player',
               title: title + ' 🖥️',
-              externalUrl: `${BASE_URL}/watch?url=${encodeURIComponent(fallbackUrl)}&title=${encodeURIComponent(matchTitle || 'Live Event')}`
+              externalUrl: `/watch?url=${encodeURIComponent(fallbackUrl)}&title=${encodeURIComponent(matchTitle || 'Live Event')}`
             })
           ];
         }
