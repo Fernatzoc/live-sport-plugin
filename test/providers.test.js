@@ -84,7 +84,7 @@ describe('MlbElMundoProvider', () => {
     expect(matches[0].sources[0].id).toBe('https://good.ltabasket.com/m-day-1.php');
   });
 
-  test('resolveStream() extracts direct m3u8 stream and preserves web player fallback', async () => {
+  test('resolveStream() extracts only direct m3u8 stream and discards web player fallback', async () => {
     nock('https://good.ltabasket.com')
       .get('/m-day-1.php')
       .reply(200, '<div class="player-container"><iframe src="https://streame.center/embed/ch15.php"></iframe></div>');
@@ -103,15 +103,13 @@ describe('MlbElMundoProvider', () => {
 
     const streams = await provider.resolveStream('https://good.ltabasket.com/m-day-1.php', 'baseball', 'MLB: Yankees vs Red Sox');
 
-    expect(streams).toHaveLength(2);
+    expect(streams).toHaveLength(1);
     expect(streams[0].name).toBe('Nuvio Direct');
     expect(streams[0].url).toBe('https://edgestream1.pro/hls/ch15.m3u8?st=token');
     expect(streams[0].behaviorHints.notWebReady).toBe(true);
     expect(streams[0].behaviorHints.proxyHeaders.request['Referer']).toBe('https://streame.center/');
     expect(streams[0].behaviorHints.proxyHeaders.request['Origin']).toBe('https://streame.center');
     expect(streams[0].behaviorHints.proxyHeaders.request['User-Agent']).toBeDefined();
-    expect(streams[1].name).toBe('Nuvio Web Player');
-    expect(streams[1].externalUrl).toBeDefined();
   });
 });
 
@@ -145,5 +143,24 @@ describe('RojadirectaProvider', () => {
     expect(streams[0].behaviorHints.proxyHeaders.request['Referer']).toBe('http://www.rojadirecta.eu/');
     expect(streams[0].behaviorHints.proxyHeaders.request['Origin']).toBe('http://www.rojadirecta.eu');
     expect(streams[0].behaviorHints.proxyHeaders.request['User-Agent']).toBeDefined();
+  });
+
+  test('resolveStream() discards web player fallback if no direct m3u8 is found', async () => {
+    provider.streamsMap.set('match_2', [
+      {
+        providerName: 'WebStream',
+        lang: 'es',
+        type: 'HTTP',
+        kbps: '800',
+        href: 'https://example.com/webplayer/watch.php'
+      }
+    ]);
+
+    nock('https://example.com')
+      .get('/webplayer/watch.php')
+      .reply(200, '<html><body>No m3u8 here</body></html>');
+
+    const streams = await provider.resolveStream('match_2', 'football', 'Match without m3u8');
+    expect(streams).toHaveLength(0);
   });
 });

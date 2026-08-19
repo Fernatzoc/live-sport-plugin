@@ -553,11 +553,6 @@ class RojadirectaProvider extends BaseProvider {
                 }
               },
               resolution: 'HD'
-            }),
-            new StreamEntity({
-              name: 'Nuvio Web Player',
-              title: title + ' 🖥️',
-              externalUrl: `/watch?url=${encodeURIComponent(fallbackUrl)}&title=${encodeURIComponent(matchTitle || 'Live Event')}`
             })
           ];
         }
@@ -565,17 +560,7 @@ class RojadirectaProvider extends BaseProvider {
         console.warn(`[${this.name}] Dynamic resolver failed for ${s.href}:`, err.message);
       }
 
-      // If we couldn't resolve the stream to an m3u8, but we found a cleaner embed/player URL,
-      // use the playerUrl or deepestUrl reached rather than the raw redirect link.
-      const fallbackUrl = state.playerUrl || state.deepestUrl || cleanUrl || s.href;
-
-      return [
-        new StreamEntity({
-          name: 'Nuvio Web Player',
-          title: title,
-          externalUrl: `${BASE_URL}/watch?url=${encodeURIComponent(fallbackUrl)}&title=${encodeURIComponent(matchTitle || 'Live Event')}`
-        })
-      ];
+      return [];
     });
 
     const results = await Promise.all(resolveTasks);

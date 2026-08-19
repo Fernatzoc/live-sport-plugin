@@ -181,32 +181,10 @@ class MlbElMundoProvider extends BaseProvider {
           },
           resolution: 'HD'
         }));
-
-        streams.push(new StreamEntity({
-          name: 'Nuvio Web Player',
-          title: `MLB Live Stream 🖥️`,
-          externalUrl: `/watch?url=${encodeURIComponent(extracted.playerUrl || watchUrl)}&title=${encodeURIComponent(matchTitle || 'MLB Live Game')}`
-        }));
-
-        return streams;
-      } else if (extracted && extracted.playerUrl) {
-        streams.push(new StreamEntity({
-          name: 'Nuvio Web Player',
-          title: `MLB Live Stream 🖥️`,
-          externalUrl: `${BASE_URL}/watch?url=${encodeURIComponent(extracted.playerUrl)}&title=${encodeURIComponent(matchTitle || 'MLB Live Game')}`
-        }));
-        return streams;
       }
     } catch (err) {
       console.warn(`[${this.name}] resolveStream failed:`, err.message);
     }
-
-    // Fallback: If extraction fails, point to the top-level match page inside /watch
-    streams.push(new StreamEntity({
-      name: 'Nuvio Web Player',
-      title: `MLB Live Stream 🖥️`,
-      externalUrl: `${BASE_URL}/watch?url=${encodeURIComponent(watchUrl)}&title=${encodeURIComponent(matchTitle || 'MLB Live Game')}`
-    }));
 
     return streams;
   }
