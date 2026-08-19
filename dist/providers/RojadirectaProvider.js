@@ -14,15 +14,21 @@ class RojadirectaProvider extends BaseProvider {
     // Memory map to store streams found during getMatches execution
     this.streamsMap = new Map();
 
-    // Wrap request with Opossum Circuit Breaker
-    this.fetchHtml = this.circuitBreaker.wrap(`${this.name}_fetch`, async (url = this.baseUrl, customHeaders = {}) => {
+    // Wrap request with Opossum Circuit Breaker only for primary match listing
+    this.fetchHtml = this.circuitBreaker.wrap(`${this.name}_fetch`, async (url = this.baseUrl) => {
+      return this.fetchPageHtml(url, { 'Referer': 'http://www.rojadirecta.eu/' }, 10000);
+    });
+  }
+
+  async fetchPageHtml(url, customHeaders = {}, timeoutMs = 6000) {
+    try {
       const headers = {
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/127.0.0.0 Safari/537.36',
         'Referer': 'http://www.rojadirecta.eu/',
         ...customHeaders
       };
-      const res = await fetch(url, { headers, signal: AbortSignal.timeout(8000) });
-      if (!res.ok) throw new Error(`HTTP error! status: ${res.status}`);
+      const res = await fetch(url, { headers, signal: AbortSignal.timeout(timeoutMs) });
+      if (!res.ok) return null;
 
       const contentType = res.headers.get('content-type') || '';
       let charset = 'utf-8';
@@ -36,7 +42,9 @@ class RojadirectaProvider extends BaseProvider {
       const buffer = await res.arrayBuffer();
       const decoder = new TextDecoder(charset);
       return decoder.decode(buffer);
-    });
+    } catch (e) {
+      return null;
+    }
   }
 
   parseSpainDate(dateStr) {
@@ -274,7 +282,7 @@ class RojadirectaProvider extends BaseProvider {
    */
   async decryptPlayerStream(url, referer) {
     try {
-      const html = await this.fetchHtml.fire(url, { 'Referer': referer });
+      const html = await this.fetchPageHtml(url, { 'Referer': referer });
       if (html) {
         return this.decryptFromHtml(html);
       }
@@ -317,6 +325,15 @@ class RojadirectaProvider extends BaseProvider {
     }
   }
 
+  cleanStreamUrl(url) {
+    if (!url) return '';
+    let clean = url.replace(/\\\//g, '/').replace(/\\u0026/g, '&').replace(/&amp;/g, '&').replace(/["'`]/g, '').trim();
+    if (clean.startsWith('//')) {
+      clean = 'https:' + clean;
+    }
+    return clean;
+  }
+
   /**
    * Recursively crawls page and nested iframes to find player HLS stream details.
    */
@@ -331,7 +348,7 @@ class RojadirectaProvider extends BaseProvider {
       }
 
       state.deepestUrl = url;
-      const html = await this.fetchHtml.fire(url, { 'Referer': referer });
+      const html = await this.fetchPageHtml(url, { 'Referer': referer });
       if (!html) return null;
 
       // A. Check for window._econfig configuration
@@ -341,7 +358,7 @@ class RojadirectaProvider extends BaseProvider {
         if (streamUrl) {
           const parsed = new URL(url);
           return {
-            url: streamUrl,
+            url: this.cleanStreamUrl(streamUrl),
             referer: parsed.origin + '/',
             origin: parsed.origin
           };
@@ -352,18 +369,20 @@ class RojadirectaProvider extends BaseProvider {
       const atobMatch = html.match(/window\.atob\(['"]([A-Za-z0-9+/=]+)['"]\)/);
       if (atobMatch) {
         const streamUrl = Buffer.from(atobMatch[1], 'base64').toString('ascii');
-        const parsed = new URL(url);
-        return {
-          url: streamUrl,
-          referer: parsed.origin + '/',
-          origin: parsed.origin
-        };
+        if (streamUrl.includes('.m3u8')) {
+          const parsed = new URL(url);
+          return {
+            url: this.cleanStreamUrl(streamUrl),
+            referer: parsed.origin + '/',
+            origin: parsed.origin
+          };
+        }
       }
 
-      // C. Check for direct .m3u8 links in player scripts
-      const m3u8Matches = html.match(/https?:\/\/[^"'`\s>]+\.m3u8[^"'`\s>]*/gi);
+      // C. Check for direct and JSON-escaped .m3u8 links in player scripts
+      const m3u8Matches = html.match(/https?:?(?:\\\/\\\/|\/\/)[^"'`\s<>]+\.m3u8[^"'`\s<>]*/gi);
       if (m3u8Matches && m3u8Matches.length > 0) {
-        const cleanUrl = m3u8Matches[0].replace(/&amp;/g, '&').replace(/["'`]/g, '');
+        const cleanUrl = this.cleanStreamUrl(m3u8Matches[0]);
         const parsed = new URL(url);
         return {
           url: cleanUrl,
@@ -372,12 +391,13 @@ class RojadirectaProvider extends BaseProvider {
         };
       }
 
-      // D. Check for var playbackURL definitions
-      const playbackMatch = html.match(/var playbackURL\s*=\s*["']([^"']+)["']/i);
+      // D. Check for var playbackURL definitions or source: / src: / file:
+      const playbackMatch = html.match(/(?:var\s+playbackURL|source|src|file)\s*[:=]\s*["']([^"']+\.m3u8[^"']*)["']/i);
       if (playbackMatch) {
+        const cleanUrl = this.cleanStreamUrl(playbackMatch[1]);
         const parsed = new URL(url);
         return {
-          url: playbackMatch[1],
+          url: cleanUrl,
           referer: parsed.origin + '/',
           origin: parsed.origin
         };
@@ -388,7 +408,7 @@ class RojadirectaProvider extends BaseProvider {
       if (sudamericaUrl) {
         const parsed = new URL(url);
         return {
-          url: sudamericaUrl,
+          url: this.cleanStreamUrl(sudamericaUrl),
           referer: parsed.origin + '/',
           origin: parsed.origin
         };
@@ -407,7 +427,7 @@ class RojadirectaProvider extends BaseProvider {
           if (streamUrl) {
             const parsed = new URL(pickedChannel.url);
             return {
-              url: streamUrl,
+              url: this.cleanStreamUrl(streamUrl),
               referer: parsed.origin + '/',
               origin: parsed.origin
             };
@@ -423,13 +443,11 @@ class RojadirectaProvider extends BaseProvider {
           if (innerMatch && innerMatch[1]) {
             try {
               const unescaped = decodeURIComponent(innerMatch[1]);
-              const subM3u8Matches = unescaped.match(/https?:?\/\/[^"'`\s>]+\.m3u8[^"'`\s>]*/gi) ||
-                unescaped.match(/\/\/[^"'`\s>]+\.m3u8[^"'`\s>]*/gi);
-              if (subM3u8Matches && subM3u8Matches.length > 0) {
-                let cleanUrl = subM3u8Matches[0].replace(/&amp;/g, '&').replace(/["'`]/g, '');
-                if (cleanUrl.startsWith('//')) {
-                  cleanUrl = 'https:' + cleanUrl;
-                }
+              const subM3u8Matches = unescaped.match(/https?:?(?:\\\/\\\/|\/\/)[^"'`\s<>]+\.m3u8[^"'`\s<>]*/gi) ||
+                unescaped.match(/(?:src|file|source)\s*[:=]\s*["']([^"']+\.m3u8[^"']*)["']/i);
+              if (subM3u8Matches) {
+                let rawMatch = typeof subM3u8Matches === 'string' ? subM3u8Matches : (subM3u8Matches[1] || subM3u8Matches[0]);
+                const cleanUrl = this.cleanStreamUrl(rawMatch);
                 const parsed = new URL(url);
                 return {
                   url: cleanUrl,
