@@ -68,6 +68,9 @@ class MlbElMundoProvider extends BaseProvider {
             category: 'baseball',
             date: dateMs.toString(),
             popular: '0', // Will be boosted dynamically by MatchAggregator if live
+            league: 'MLB',
+            team1: { name: team1 },
+            team2: { name: team2 },
             sources: [{ source: 'mlbelmundo', id: href, url: href }]
           }));
         }

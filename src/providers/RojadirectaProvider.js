@@ -125,6 +125,22 @@ class RojadirectaProvider extends BaseProvider {
           }
         });
 
+        let team1Name = null;
+        let team2Name = null;
+        if (name.includes(' - ')) {
+          const parts = name.split(' - ');
+          team1Name = parts[0].trim();
+          team2Name = parts[1].trim();
+        } else if (name.includes(' vs ')) {
+          const parts = name.split(' vs ');
+          team1Name = parts[0].trim();
+          team2Name = parts[1].trim();
+        } else if (name.includes(' v ')) {
+          const parts = name.split(' v ');
+          team1Name = parts[0].trim();
+          team2Name = parts[1].trim();
+        }
+
         // Store streams in memory map
         if (streamsList.length > 0) {
           this.streamsMap.set(matchId, streamsList);
@@ -135,6 +151,8 @@ class RojadirectaProvider extends BaseProvider {
             category: this.normalizeCategory(sport),
             date: dateMs.toString(),
             popular: isLive ? '1' : '0',
+            team1: team1Name ? { name: team1Name } : null,
+            team2: team2Name ? { name: team2Name } : null,
             sources: [{ source: 'rojadirecta', id: matchId }]
           }));
         }
