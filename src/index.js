@@ -222,7 +222,7 @@ app.get('/:config?/manifest.json', (req, res, next) => {
     const keepCatalogs = ['nuvio_sports_live', 'nuvio_sports_networks', 'nuvio_sports_upcoming', 'nuvio_sports_teams'];
     
     // Add specific catalogs based on selection
-    const sportCatalogs = ['football', 'cricket', 'basketball', 'motorsport', 'hockey', 'baseball', 'mma', 'golf', 'tennis', 'rugby', 'american_football', 'darts', 'college', 'rojadirecta', 'mlbelmundo'];
+    const sportCatalogs = ['football', 'cricket', 'basketball', 'motorsport', 'hockey', 'baseball', 'mma', 'golf', 'tennis', 'rugby', 'american_football', 'darts', 'college', 'rojadirecta', 'futbollibre', 'mlbelmundo'];
     for (const sport of sportCatalogs) {
       if (enabledSports.includes(sport)) keepCatalogs.push(`nuvio_sports_${sport}`);
     }

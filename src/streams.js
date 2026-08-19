@@ -18,11 +18,11 @@ async function handleStream(type, id, config) {
 
   const streams = [];
 
-  const SOURCE_PRIORITY = { admin: 1, echo: 1, golf: 1, delta: 1, 'watchfooty': 2, 'cdnlive': 3, 'streamsports99': 4, 'streamic': 5, 'ppvdomains': 6, 'strims24': 7, 'streamfree': 8, 'timstreams': 9, 'bintv': 10, 'ntv': 11, 'sportyhunter': 12, 'streamsports': 13, 'iptv-org': 14 };
+  const SOURCE_PRIORITY = { admin: 1, echo: 1, golf: 1, delta: 1, 'futbollibre': 2, 'watchfooty': 2, 'cdnlive': 3, 'streamsports99': 4, 'streamic': 5, 'ppvdomains': 6, 'strims24': 7, 'streamfree': 8, 'timstreams': 9, 'bintv': 10, 'ntv': 11, 'sportyhunter': 12, 'streamsports': 13, 'iptv-org': 14 };
   const sortedSources = [...match.sources].sort((a, b) => {
     // If a source isn't in the list, but it's not one of our known fallback providers, 
     // it's likely a new Streamed.pk source. Give it priority 1.5 so it stays near the top.
-    const getPriority = (src) => SOURCE_PRIORITY[src] ?? (['watchfooty', 'cdnlive', 'streamsports99', 'streamic', 'ppvdomains', 'strims24', 'streamfree', 'timstreams', 'bintv', 'ntv', 'sportyhunter', 'streamsports', 'iptv-org'].includes(src) ? 99 : 1.5);
+    const getPriority = (src) => SOURCE_PRIORITY[src] ?? (['futbollibre', 'watchfooty', 'cdnlive', 'streamsports99', 'streamic', 'ppvdomains', 'strims24', 'streamfree', 'timstreams', 'bintv', 'ntv', 'sportyhunter', 'streamsports', 'iptv-org'].includes(src) ? 99 : 1.5);
     const pa = getPriority(a.source);
     const pb = getPriority(b.source);
     if (pa !== pb) return pa - pb;
@@ -157,7 +157,7 @@ async function handleStream(type, id, config) {
     ntv: 'NTV', sportyhunter: 'SportyHunter', streamsports: 'StreamSports',
     'iptv-org': 'Direct IPTV', 'streamsports99': 'StreamSports99',
     'ppvdomains': 'PPV Domains', 'streamic': 'Streamic', 'strims24': 'Strims24',
-    mlbelmundo: 'MLB El Mundo', rojadirecta: 'Rojadirecta'
+    mlbelmundo: 'MLB El Mundo', rojadirecta: 'Rojadirecta', futbollibre: 'FutbolLibre'
   };
 
   streams.forEach(s => {
@@ -186,6 +186,7 @@ async function handleStream(type, id, config) {
     else if (s.title && s.title.toLowerCase().includes('strims24')) providerName = 'Strims24';
     else if (s.title && (s.title.toLowerCase().includes('mlbelmundo') || s.title.toLowerCase().includes('mlb live stream'))) providerName = 'MLB El Mundo';
     else if (s.title && s.title.toLowerCase().includes('rojadirecta')) providerName = 'Rojadirecta';
+    else if (s.title && s.title.toLowerCase().includes('futbollibre')) providerName = 'FutbolLibre';
     else if (s.title && s.title.toLowerCase().includes('24/7')) providerName = 'Direct IPTV';
 
     let originalTitle = s.title || '';
@@ -231,6 +232,7 @@ async function handleStream(type, id, config) {
       else if (providerName === 'SportyHunter') referer = 'https://sportyhunter.xyz/';
       else if (providerName === 'MLB El Mundo') referer = 'https://streame.center/';
       else if (providerName === 'Rojadirecta') referer = 'http://www.rojadirecta.eu/';
+      else if (providerName === 'FutbolLibre') referer = 'https://futbollibretv.sx/';
       
       if (!s.behaviorHints.proxyHeaders && referer) {
         s.behaviorHints.proxyHeaders = {

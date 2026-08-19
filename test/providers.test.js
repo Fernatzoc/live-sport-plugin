@@ -172,3 +172,83 @@ describe('RojadirectaProvider', () => {
     expect(streams).toHaveLength(0);
   });
 });
+
+const FutbolLibreProvider = require('../src/providers/FutbolLibreProvider');
+
+describe('FutbolLibreProvider', () => {
+  let provider;
+
+  beforeEach(() => {
+    nock.cleanAll();
+    const circuitBreaker = new CircuitBreakerService();
+    provider = new FutbolLibreProvider({ circuitBreaker });
+  });
+
+  test('getMatches() parses eventos.js and 24/7 channels', async () => {
+    const mockEventos = `
+      const EVENTOS_DATA = [
+        {
+          "id": 1,
+          "clase": "FUT",
+          "titulo": "Copa: Team A vs Team B",
+          "hora": "20:00",
+          "canales": [
+            {
+              "nombre": "Disney+",
+              "url": "eventos.html?r=aHR0cHM6Ly9zdHJlYW10cC5leGFtcGxlL2dsb2JhbDEucGhwP3N0cmVhbT1kaXNuZXk4",
+              "calidad": "720p"
+            }
+          ]
+        }
+      ];
+    `;
+
+    nock('https://futbollibretv.sx')
+      .get('/eventos.js')
+      .reply(200, mockEventos);
+
+    nock('https://futbollibretv.sx')
+      .get('/config.js')
+      .reply(200, 'const STREAM_CONFIG = { activeDomain: "streamtp99a.sbs", basePath: "/global1.php?stream=" };');
+
+    const matches = await provider.getMatches();
+    expect(matches.length).toBeGreaterThanOrEqual(1);
+
+    const matchEvent = matches.find(m => m.id === 'fl_1');
+    expect(matchEvent).toBeDefined();
+    expect(matchEvent.title).toBe('Copa: Team A vs Team B');
+    expect(matchEvent.category).toBe('football');
+    expect(matchEvent.team1.name).toBe('Team A');
+    expect(matchEvent.team2.name).toBe('Team B');
+
+    const dSports = matches.find(m => m.id === 'fl_ch_dsports');
+    expect(dSports).toBeDefined();
+    expect(dSports.category).toBe('networks');
+  });
+
+  test('resolveStream() extracts and verifies direct m3u8 stream', async () => {
+    provider.streamsMap.set('fl_1', [
+      {
+        name: 'Disney+',
+        quality: '720p',
+        url: 'https://streamtp.example/global1.php?stream=disney8'
+      }
+    ]);
+
+    nock('https://streamtp.example')
+      .get('/global1.php?stream=disney8')
+      .reply(200, '<script>var playbackURL = "https://s1.tudeporteshoy.xyz/global/disney8/index.m3u8";</script>');
+
+    nock('https://s1.tudeporteshoy.xyz')
+      .head('/global/disney8/index.m3u8')
+      .reply(200);
+
+    const streams = await provider.resolveStream('fl_1', 'football', 'Copa: Team A vs Team B');
+    expect(streams).toHaveLength(1);
+    expect(streams[0].name).toBe('Nuvio Direct');
+    expect(streams[0].url).toBe('https://s1.tudeporteshoy.xyz/global/disney8/index.m3u8');
+    expect(streams[0].behaviorHints.notWebReady).toBe(true);
+    expect(streams[0].behaviorHints.proxyHeaders.request['Referer']).toBe('https://streamtp.example/');
+  });
+});
+

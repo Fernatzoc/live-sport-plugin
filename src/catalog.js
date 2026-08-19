@@ -204,7 +204,7 @@ async function handleCatalog(type, id, extra, config) {
       filteredMatches = []; // If no config, return empty
     }
   } else if (categoryMatch === 'other') {
-    const topLevelCats = ['football', 'cricket', 'basketball', 'motorsport', 'hockey', 'baseball', 'mma', 'golf', 'tennis', 'rugby', 'american_football', 'darts', 'networks', 'college', 'rojadirecta', 'mlbelmundo'];
+    const topLevelCats = ['football', 'cricket', 'basketball', 'motorsport', 'hockey', 'baseball', 'mma', 'golf', 'tennis', 'rugby', 'american_football', 'darts', 'networks', 'college', 'rojadirecta', 'futbollibre', 'mlbelmundo'];
     filteredMatches = matches.filter(m => !topLevelCats.includes(m.category));
     
     if (extra && extra.genre) {
@@ -221,6 +221,11 @@ async function handleCatalog(type, id, extra, config) {
       (m.id && (m.id.startsWith('roja_') || m.id.startsWith('rojadirecta_'))) || 
       (m.sources && m.sources.some(s => s.source === 'rojadirecta'))
     );
+  } else if (categoryMatch === 'futbollibre') {
+    filteredMatches = matches.filter(m => 
+      (m.id && (m.id.startsWith('fl_') || m.id.startsWith('futbollibre_'))) || 
+      (m.sources && m.sources.some(s => s.source === 'futbollibre'))
+    );
   } else if (categoryMatch === 'mlbelmundo') {
     filteredMatches = matches.filter(m => 
       (m.id && m.id.startsWith('mlbelmundo_')) || 
@@ -231,7 +236,7 @@ async function handleCatalog(type, id, extra, config) {
   }
 
   if (typeof conf.sports === 'string' && conf.sports !== 'all') {
-    if (categoryMatch !== 'rojadirecta' && categoryMatch !== 'mlbelmundo') {
+    if (categoryMatch !== 'rojadirecta' && categoryMatch !== 'futbollibre' && categoryMatch !== 'mlbelmundo') {
       const allowedSports = conf.sports.toLowerCase().split(',').map(s => s.trim()).filter(Boolean);
       // Don't filter out networks (24/7 TV) since they aren't tied to a specific sport
       filteredMatches = filteredMatches.filter(m => 
@@ -239,7 +244,8 @@ async function handleCatalog(type, id, extra, config) {
         allowedSports.includes(m.category) ||
         allowedSports.includes('other') ||
         (allowedSports.includes('mlbelmundo') && ((m.id && m.id.startsWith('mlbelmundo_')) || (m.sources && m.sources.some(s => s.source === 'mlbelmundo')) || m.category === 'baseball')) ||
-        (allowedSports.includes('rojadirecta') && ((m.id && (m.id.startsWith('roja_') || m.id.startsWith('rojadirecta_'))) || (m.sources && m.sources.some(s => s.source === 'rojadirecta'))))
+        (allowedSports.includes('rojadirecta') && ((m.id && (m.id.startsWith('roja_') || m.id.startsWith('rojadirecta_'))) || (m.sources && m.sources.some(s => s.source === 'rojadirecta')))) ||
+        (allowedSports.includes('futbollibre') && ((m.id && (m.id.startsWith('fl_') || m.id.startsWith('futbollibre_'))) || (m.sources && m.sources.some(s => s.source === 'futbollibre')) || m.category === 'football'))
       );
     }
   }

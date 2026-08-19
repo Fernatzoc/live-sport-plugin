@@ -70,7 +70,7 @@ class BaseProvider {
     }
     cat = String(cat).toLowerCase().replace(/[^a-z0-9]/g, '');
     if (cat.includes('americanfootball') || cat.includes('nfl') || cat.includes('afl') || cat.includes('gridiron') || cat.includes('futbolamericano')) return 'american_football';
-    if (cat.includes('soccer') || cat.includes('football') || cat.includes('futbol')) return 'football';
+    if (cat.includes('soccer') || cat.includes('football') || cat.includes('futbol') || cat === 'fut' || cat.startsWith('fut')) return 'football';
     if (cat.includes('motor') || cat.includes('racing') || cat.includes('cycling') || cat.includes('f1')) return 'motorsport';
     if (cat.includes('fight') || cat.includes('mma') || cat.includes('boxing') || cat.includes('boxeo') || cat.includes('wrestling') || cat.includes('lucha') || cat.includes('knuckle') || cat.includes('ufc')) return 'mma';
     if (cat.includes('basketball') || cat.includes('nba') || cat.includes('baloncesto') || cat.includes('basket')) return 'basketball';
