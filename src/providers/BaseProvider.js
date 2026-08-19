@@ -43,19 +43,20 @@ class BaseProvider {
       cat = cat.name || cat.title || 'other';
     }
     cat = String(cat).toLowerCase().replace(/[^a-z0-9]/g, '');
-    if (cat.includes('americanfootball') || cat.includes('nfl') || cat.includes('afl') || cat.includes('gridiron')) return 'american_football';
-    if (cat.includes('soccer') || cat.includes('football')) return 'football';
+    if (cat.includes('americanfootball') || cat.includes('nfl') || cat.includes('afl') || cat.includes('gridiron') || cat.includes('futbolamericano')) return 'american_football';
+    if (cat.includes('soccer') || cat.includes('football') || cat.includes('futbol')) return 'football';
     if (cat.includes('motor') || cat.includes('racing') || cat.includes('cycling') || cat.includes('f1')) return 'motorsport';
-    if (cat.includes('fight') || cat.includes('mma') || cat.includes('boxing') || cat.includes('wrestling') || cat.includes('knuckle') || cat.includes('ufc')) return 'mma';
-    if (cat.includes('basketball') || cat.includes('nba')) return 'basketball';
+    if (cat.includes('fight') || cat.includes('mma') || cat.includes('boxing') || cat.includes('boxeo') || cat.includes('wrestling') || cat.includes('lucha') || cat.includes('knuckle') || cat.includes('ufc')) return 'mma';
+    if (cat.includes('basketball') || cat.includes('nba') || cat.includes('baloncesto') || cat.includes('basket')) return 'basketball';
     if (cat.includes('golf')) return 'golf';
     if (cat.includes('rugby')) return 'rugby';
     if (cat.includes('cricket')) return 'cricket';
-    if (cat.includes('tennis')) return 'tennis';
+    if (cat.includes('tennis') || cat.includes('tenis')) return 'tennis';
     if (cat.includes('hockey') || cat.includes('nhl')) return 'hockey';
-    if (cat.includes('baseball') || cat.includes('mlb')) return 'baseball';
-    if (cat.includes('darts')) return 'darts';
-    if (cat.includes('liveshow') || cat.includes('uncategorized')) return 'other';
+    if (cat.includes('baseball') || cat.includes('mlb') || cat.includes('beisbol')) return 'baseball';
+    if (cat.includes('darts') || cat.includes('dardos')) return 'darts';
+    if (cat.includes('college') || cat.includes('ncaa')) return 'college';
+    if (cat.includes('liveshow') || cat.includes('uncategorized') || cat.includes('varios')) return 'other';
     return cat;
   }
 

@@ -183,6 +183,8 @@ async function handleCatalog(type, id, extra, config) {
   const cacheService = container.resolve('cacheService');
   const matches = cacheService.getMatches();
   
+  let filteredMatches = matches;
+
   if (categoryMatch === 'live') {
     filteredMatches = matches.filter(m => m.popular === '1');
   } else if (categoryMatch === 'upcoming') {
@@ -215,23 +217,31 @@ async function handleCatalog(type, id, extra, config) {
       }
     }
   } else if (categoryMatch === 'rojadirecta') {
-    filteredMatches = matches.filter(m => m.id.startsWith('rojadirecta_') || m.sources.some(s => s.source === 'rojadirecta'));
+    filteredMatches = matches.filter(m => 
+      (m.id && (m.id.startsWith('roja_') || m.id.startsWith('rojadirecta_'))) || 
+      (m.sources && m.sources.some(s => s.source === 'rojadirecta'))
+    );
   } else if (categoryMatch === 'mlbelmundo') {
-    filteredMatches = matches.filter(m => m.id.startsWith('mlbelmundo_') || m.sources.some(s => s.source === 'mlbelmundo'));
+    filteredMatches = matches.filter(m => 
+      (m.id && m.id.startsWith('mlbelmundo_')) || 
+      (m.sources && m.sources.some(s => s.source === 'mlbelmundo'))
+    );
   } else if (categoryMatch !== 'catalog') {
     filteredMatches = matches.filter(m => m.category === categoryMatch);
   }
 
   if (typeof conf.sports === 'string' && conf.sports !== 'all') {
-    const allowedSports = conf.sports.toLowerCase().split(',').map(s => s.trim()).filter(Boolean);
-    // Don't filter out networks (24/7 TV) since they aren't tied to a specific sport
-    filteredMatches = filteredMatches.filter(m => 
-      m.category === 'networks' || 
-      allowedSports.includes(m.category) ||
-      allowedSports.includes('other') ||
-      (allowedSports.includes('mlbelmundo') && (m.id.startsWith('mlbelmundo_') || m.category === 'baseball')) ||
-      (allowedSports.includes('rojadirecta') && m.id.startsWith('rojadirecta_'))
-    );
+    if (categoryMatch !== 'rojadirecta' && categoryMatch !== 'mlbelmundo') {
+      const allowedSports = conf.sports.toLowerCase().split(',').map(s => s.trim()).filter(Boolean);
+      // Don't filter out networks (24/7 TV) since they aren't tied to a specific sport
+      filteredMatches = filteredMatches.filter(m => 
+        m.category === 'networks' || 
+        allowedSports.includes(m.category) ||
+        allowedSports.includes('other') ||
+        (allowedSports.includes('mlbelmundo') && ((m.id && m.id.startsWith('mlbelmundo_')) || (m.sources && m.sources.some(s => s.source === 'mlbelmundo')) || m.category === 'baseball')) ||
+        (allowedSports.includes('rojadirecta') && ((m.id && (m.id.startsWith('roja_') || m.id.startsWith('rojadirecta_'))) || (m.sources && m.sources.some(s => s.source === 'rojadirecta'))))
+      );
+    }
   }
 
   filteredMatches = [...filteredMatches].sort((a, b) => {
